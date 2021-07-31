@@ -5,7 +5,7 @@
                  templated Google Sheet in order to perform statistical evaluations of
                  D&E tests or those configured with labelled Campaigns, AdGroups or Ads.
 
-    License:     https://github.com/we-discover/public/blob/main/LICENSE
+    License:     https://github.com/we-discover/public/blob/master/LICENSE
 
     Version:     1.0.1
 
