@@ -195,11 +195,15 @@ function getEntityIdsForTest(config) {
       if (variantId === undefined) {
         continue;
       }
-      variantEntities[variantId] = [];
 
       // Evaluates like label.adGroups().get() (or similar)
       var entityIterator = eval('label.' + config.label_type + '().get()')
 
+      if (entityIterator.totalNumEntities() < 1) {
+        continue;
+      }
+
+      variantEntities[variantId] = [];
       while (entityIterator.hasNext()) {
         var entity = entityIterator.next();
         variantEntities[variantId].push(entity.getId());
