@@ -17,6 +17,8 @@ const colours = {
   'grey': '#d9d9d9',
   'lightGrey': '#f3f3f3',
   'navy': '#0e2244',
+  'lightRed': '#f4c7c3',
+  'lightGreen': '#b7e1cd',
   'variants': [
     '#0e2244',
     '#93c47d',

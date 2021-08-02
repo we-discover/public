@@ -27,7 +27,11 @@ const summaryTableRefs = {
 const calcsCellRefs = {
   objectiveType: 'D3',
   objectiveMetric: 'E3',
-  outcomes: 'AI3:AJ8'
+  outcomes: 'AI3:AJ8',
+  values: {
+    'Rate': 'AQ15:AV15',
+    'Volume': 'AI13:AN13'
+  }
 };
 
 const applicableControlChanges = [
@@ -52,29 +56,35 @@ function updateSummaryTable(e) {
 
     for (var i in metrics) {
       var metric = metrics[i];
+
       var metricType = 'Volume';
       if (rateObjectiveMetrics.includes(metric)) {
         metricType = 'Rate';
       }
-      var tableOutputs = [];
 
       calcSheet.getRange(calcsCellRefs.objectiveType).setValue(metricType);
       calcSheet.getRange(calcsCellRefs.objectiveMetric).setValue(metric);
 
+      var tableOutputs = {values: [], colours: []};
       var outcomes = calcSheet.getRange(calcsCellRefs.outcomes).getValues();
+      var values = calcSheet.getRange(calcsCellRefs.values[metricType]).getValues();
+
       for (var i in outcomes) {
+        tableOutputs.values.push([values[0][i]]);
         if (outcomes[i][0]) { // Is Best
-          tableOutputs.push([true]);
+          tableOutputs.colours.push([colours.lightGreen]);
           continue;
         }
         if (outcomes[i][1]) { // Is Worst
-          tableOutputs.push([false]);
+          tableOutputs.colours.push([colours.lightRed]);
           continue;
         }
-        tableOutputs.push(['']);
+        tableOutputs.colours.push(['']);
       }
 
-      summarySheet.getRange(summaryTableRefs[metric]).setValues(tableOutputs);
+      var outputRange = summarySheet.getRange(summaryTableRefs[metric]);
+      outputRange.setValues(tableOutputs.values);
+      outputRange.setBackgrounds(tableOutputs.colours);
     }
 
   }
