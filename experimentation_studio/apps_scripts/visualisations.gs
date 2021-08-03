@@ -144,7 +144,9 @@ class MetricVisualisationHandler {
   showRelevantVariantsOnVisMetricChart() {
     var visMetricData = this.workbook.getSheetByName(sheetNames.metricData.visMetric.mvt);
     visMetricData.showColumns(3, this.numVariants);
-    visMetricData.hideColumns(this.numVariants + 3, 6 - this.numVariants);
+    if (this.numVariants < 6) {
+      visMetricData.hideColumns(this.numVariants + 3, 6 - this.numVariants);
+    }
   }
 
   // Rate metric charts

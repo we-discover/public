@@ -80,7 +80,7 @@ class FormHandler {
     }
     if (field === 'Variants') {
       return SpreadsheetApp.newDataValidation()
-        .requireValueInRange(options.getRange('J2:J7'))
+        .requireValueInRange(options.getRange('J3:J7'))
         .build();
     }
 
