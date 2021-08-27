@@ -1,16 +1,11 @@
 /*
     Name:        WeDiscover - Experimentation Studio, Google Ads Script
-
     Description: A script to export experimental observation data from Google Ads to a
                  templated Google Sheet in order to perform statistical evaluations of
                  D&E tests or those configured with labelled Campaigns, AdGroups or Ads.
-
     License:     https://github.com/we-discover/public/blob/master/LICENSE
-
     Version:     1.0.1
-
     Released:    2021-07-31
-
     Contact:     scripts@we-discover.com
 */
 
@@ -18,7 +13,7 @@
 function main() {
 
   // EDIT ME -- Google Sheet ID for Template
-  const gsheetId = 'XXX';
+  const gsheetId = '1RT4uNltWzIUe01Y_NxEX4jNRX-11L8ap4mS9BxjOh4k';
 
   // Read all test configurations from GSheet
   var testConfigurations = loadTestConfigsFromSheet(gsheetId);
@@ -182,11 +177,22 @@ function extractVariantIdFromLabelName(labelName) {
 function getEntityIdsForTest(config) {
 
   var variantEntities = {};
+  var labelIds = [];
 
   if (config.config_type === 'label') {
+    var labelReport = AdsApp.report(
+      "SELECT label.id " +
+      "FROM label " +
+      "WHERE label.name REGEXP_MATCH '" + config.mvt_label + "\\\\$.*'"
+    ).rows();
+
+    while(labelReport.hasNext()) {
+      labelIds.push(Number(labelReport.next()["label.id"]));
+    }
+
     var labelIterator = AdsApp.labels()
-      .withCondition("Name CONTAINS '" + config.mvt_label + "$'")
-      .get();
+     .withIds(labelIds)
+     .get();
 
     while (labelIterator.hasNext()) {
       var label = labelIterator.next();
