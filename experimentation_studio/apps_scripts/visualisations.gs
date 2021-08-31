@@ -14,11 +14,32 @@
     Contact:     scripts@we-discover.com
 */
 
-// Callback for cell formats for toggle on drill down views
+// Callback for cell formats
 function toggleCellFormats(e) {
+  var workbook = SpreadsheetApp.getActiveSpreadsheet();
+
+  var optionsSheet = workbook.getSheetByName(sheetNames.options);
+  var currencySymbol = optionsSheet.getRange('AF2').getValue();
+  var currencyFormat = currencySymbol + '#,##0';
+
+  // Control global sheet cell currency formats for test selection
+  if ([controlCellRefs.testName, controlCellRefs.testType].includes(e.range.getA1Notation())) {
+    Logger.log('Run toggleCellFormats for fixed');
+
+    for (var i in fixedCurrencyRanges) {
+      var targetSheetName = getProp(sheetNames, fixedCurrencyRanges[i].sheetNameRef);
+      var targetSheet = workbook.getSheetByName(targetSheetName);
+
+      for (var j in fixedCurrencyRanges[i].ranges) {
+        var currencyRange = fixedCurrencyRanges[i].ranges[j];
+        targetSheet.getRange(currencyRange).setNumberFormat(currencyFormat);
+      }
+    }
+  }
+
+  // Control cell formats for toggle on drill down views
   if (isInControlRange(e.range.getA1Notation())) {
-    Logger.log('Run toggleCellFormats');
-    var workbook = SpreadsheetApp.getActiveSpreadsheet();
+    Logger.log('Run toggleCellFormats for objective');
 
     for (var i in sheetNames.drillDowns) {
       var outputSheet = workbook.getSheetByName(sheetNames.drillDowns[i]);
@@ -27,7 +48,7 @@ function toggleCellFormats(e) {
         .getValue();
 
       if (['Cost', 'Conversion Value'].includes(selectedObjectiveMetric)) {
-        outputSheet.getRange("E28:J33").setNumberFormat('£#,##0');
+        outputSheet.getRange("E28:J33").setNumberFormat(currencyFormat);
         continue;
       }
       if (rateObjectiveMetrics.includes(selectedObjectiveMetric)) {

@@ -97,6 +97,34 @@ const abVariantCellRefs = {
   2: 'K5'
 };
 
+const fixedCurrencyRanges = [
+  {
+    sheetNameRef: 'summary',
+    ranges: [
+      'I12:I17',
+      'M12:N17'
+    ]
+  },
+  {
+    sheetNameRef: 'drillDowns.mvt',
+    ranges: [
+      'F12:F17',
+      'L12:L17',
+      'O12:O17',
+      'P12:P17'
+    ]
+  },
+  {
+    sheetNameRef: 'drillDowns.twoVar',
+    ranges: [
+      'F12:F13',
+      'L12:L13',
+      'O12:O13',
+      'P12:P13'
+    ]
+  }
+];
+
 // Utility function to check if A1 reference is in control range
 function isInControlRange(a1Reference) {
   return (
@@ -129,6 +157,21 @@ function getFirstEmptyRow(sheet) {
     ct++;
   }
   return ct + 1;
+}
+
+// Utility function to access nested JSON property
+function getProp(obj, prop, defval){
+    prop = prop.split('.');
+    if (typeof defval == 'undefined') {
+      defval = null
+    };
+    for (var i = 0; i < prop.length; i++) {
+        if(typeof obj[prop[i]] == 'undefined') {
+          return defval;
+        }
+        obj = obj[prop[i]];
+    }
+    return obj;
 }
 
 // Method to add days to date obj
