@@ -34,8 +34,14 @@ const calcsCellRefs = {
   }
 };
 
+const powerCellRefs = {
+  bestHasPower: 'C19',
+  worstHasPower: 'G19'
+};
+
 const applicableControlChanges = [
   controlCellRefs.confidence,
+  controlCellRefs.power,
   controlCellRefs.testName,
   controlCellRefs.testType
 ];
@@ -51,6 +57,7 @@ function updateSummaryTable(e) {
 
     var summarySheet = workbook.getSheetByName(sheetNames.summary);
     var calcSheet = workbook.getSheetByName(sheetNames.calculations.summaryStatTests);
+    var powerSheet = workbook.getSheetByName(sheetNames.calculations.summaryPowerTests);
 
     const metrics = rateObjectiveMetrics.concat(volumeObjectiveMetrics);
 
@@ -71,14 +78,23 @@ function updateSummaryTable(e) {
 
       for (var i in outcomes) {
         tableOutputs.values.push([values[0][i]]);
+
         if (outcomes[i][0]) { // Is Best
-          tableOutputs.colours.push([colours.lightGreen]);
-          continue;
+          var bestHasPower = powerSheet.getRange(powerCellRefs.bestHasPower).getValue();
+          if (bestHasPower) {
+            tableOutputs.colours.push([colours.lightGreen]);
+            continue;
+          }
         }
+
         if (outcomes[i][1]) { // Is Worst
-          tableOutputs.colours.push([colours.lightRed]);
-          continue;
+          var worstHasPower = powerSheet.getRange(powerCellRefs.worstHasPower).getValue();
+          if (worstHasPower) {
+            tableOutputs.colours.push([colours.lightRed]);
+            continue;
+          }
         }
+
         tableOutputs.colours.push(['']);
       }
 
@@ -88,6 +104,5 @@ function updateSummaryTable(e) {
     }
 
   }
-
   workbook.toast('Update complete! 🚀', 'Status', 3);
 }

@@ -13,7 +13,7 @@
 function main() {
 
   // EDIT ME -- Google Sheet ID for Template
-  const gsheetId = '1RT4uNltWzIUe01Y_NxEX4jNRX-11L8ap4mS9BxjOh4k';
+  const gsheetId = 'XXXX';
 
   // Read all test configurations from GSheet
   var testConfigurations = loadTestConfigsFromSheet(gsheetId);

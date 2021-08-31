@@ -75,7 +75,8 @@ const sheetNames = {
   'calculations': {
     'statTests': 'Intermediate - Significance Tests',
     'summaryStatTests': 'Intermediate - Significance Tests (Summary)',
-    'power': 'Intermediate - Power Analysis'
+    'power': 'Intermediate - Power Analysis',
+    'summaryPowerTests': 'Intermediate - Power Analysis (Summary)'
   }
 };
 
