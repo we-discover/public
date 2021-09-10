@@ -11,7 +11,7 @@ var checkPausedAds = false;
 var reportDailyChangeOnly = true;
 
 // Must be text enclosed within quote marks ""
-var recipientEmail = "alex.hughes@we-discover.com";
+var recipientEmail = "example@gmail.com";
 var labelName = "Ad groups without RSAs"
 
 /******************************************************
