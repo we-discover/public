@@ -4,7 +4,6 @@
 
 // Inputs:
 // Must be set to true or false
-var sendEmails = true;
 var checkPausedCampaigns = false;
 var checkPausedAdGroups = false;
 var checkPausedAds = false;
@@ -89,13 +88,13 @@ function accountMain() {
   addLabelIfNeeded(labelName)
 
   // Find ad groups without RSAs
-  var allAdGroups = processQuery(allAdGroupsQuery);
-  var hasRsaAdGroups = processQuery(rsaAdGroupsQuery);
+  var allAdGroupIds = processQuery(allAdGroupsQuery);
+  var hasRsaAdGroupIds = processQuery(rsaAdGroupsQuery);
 
-  var allAdGroupIds = Object.keys(allAdGroups);
-  var hasRsaIds = Object.keys(hasRsaAdGroups);
+//  var allAdGroupIds = Object.keys(allAdGroups);
+//  var hasRsaIds = Object.keys(hasRsaAdGroups);
 
-  var noRsaAdGroupIds = getElementsInFirstArrayOnly(allAdGroupIds, hasRsaIds);
+  var noRsaAdGroupIds = getElementsInFirstArrayOnly(allAdGroupIds, hasRsaAdGroupIds);
   var noRsaAdGroups = AdsApp.adGroups().withIds(noRsaAdGroupIds).get(); 
 
   // Update already labelled ad groups
@@ -105,13 +104,13 @@ function accountMain() {
     var adGroupId = adGroup.getId();
 
     // If labelled ad group has an RSA, remove label and don't add it to our list for today
-    if (hasRsaIds.indexOf(adGroupId) !== -1) {
+    if (hasRsaAdGroupIds.indexOf(adGroupId) !== -1) {
       adGroup.removeLabel(labelName);
       continue;
     }
 
     adGroupsAlreadyLabelled.push(adGroupId);
-  }
+  }  
 
   // Get ad groups that require labels
   var idsToLabel = getElementsInFirstArrayOnly(noRsaAdGroupIds, adGroupsAlreadyLabelled);
@@ -121,26 +120,21 @@ function accountMain() {
   var labelledToday = iterateThroughAdGroups(adGroupsToLabel, true);
   var allLabelled = iterateThroughAdGroups(noRsaAdGroups, false);
 
-  var emailBody = buildEmailBody(labelledToday, allLabelled, accountId, accountName);
+  var emailBody = buildEmailBody(labelledToday, allLabelled, adGroupsToLabel.totalNumEntities(), noRsaAdGroups.totalNumEntities(), accountId, accountName);
   return emailBody;
 }
 
 // Returns object of form {ad_group_id:{'camapaignName': <campaign name>, 'adGroupName': <ad group name>}} for a given query
 function processQuery(query) {
-  var entitiesInQuery = {};
+  var ids = [];
   var iterator = AdsApp.report(query).rows();
 
   while (iterator.hasNext()) {
     var row = iterator.next();
-    var adGroupId = row['ad_group.id'];
-    var adGroupName = row['ad_group.name'];
-    var campaignName = row['campaign.name'];
-    var campaignId = row['campaign.id'];
-
-    entitiesInQuery[adGroupId] = {'adGroupName': adGroupName, 'campaignName': campaignName, 'campaignId': campaignId};
+    ids.push(row['ad_group.id']);
   }
 
-  return entitiesInQuery;
+  return ids;
 }
 
 // Checks account to see if label exists, creates it if not
@@ -154,7 +148,7 @@ function addLabelIfNeeded(labelName) {
 }
 
 // Build body of email, listing campaigns & ad groups
-function buildEmailBody(labelledToday, allLabelled, accountId, accountName) {
+function buildEmailBody(labelledToday, allLabelled, numLabelledToday, numAllLabelled, accountId, accountName) {
   var labelledTodayCampaigns = Object.keys(labelledToday).sort();
   var allLabelledCampaigns = Object.keys(allLabelled).sort();
 
@@ -162,7 +156,7 @@ function buildEmailBody(labelledToday, allLabelled, accountId, accountName) {
       "<b>Account: "+ accountName + " (CID: " + accountId + ")</b><br>"
 
   var body =
-      "We have found " + allLabelledCampaigns.length + " ad groups in this account which don't currently have an RSA in them. " + labelledTodayCampaigns.length + " of these are new today.<br>" +
+      "We have found " + numLabelledToday + " ad groups in this account which don't currently have an RSA in them. " + numAllLabelled + " of these are new today.<br>" +
       "<br>" +
       "New ad groups found per campaign:<br>";
 
@@ -224,11 +218,10 @@ function iterateThroughAdGroups(adGroupIterator, applyLabel) {
       groupedByCampaigns[campaignName] = {'campaignId': campaignId, 'adGroups':[{'adGroupId':adGroupId, 'adGroupName': adGroupName}]};
     }
   }
-
   return groupedByCampaigns;
 }
 
 // Return elements which are present in array1 but not in array2
 function getElementsInFirstArrayOnly(array1, array2) {
-  return array1.filter(function arrayFilter(element) {return array2.indexOf(element) === -1});
+  return array1.filter(function arrayFilter(element) {return array2.indexOf(element) === -1;});
 }
