@@ -29,7 +29,7 @@ var labelName = "no_rsa_present";
 
 // Script entrypoint
 function main() {
-    executionContext = getExecutionContext();
+    var executionContext = getExecutionContext();
     var topLevelAccount = AdsApp.currentAccount();
     var totalGroupsWithoutAnRsa = 0;
     var accountCheckSummaries = [];
