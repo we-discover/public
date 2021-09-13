@@ -189,8 +189,9 @@ function handleGroupsWithoutRsa(ids) {
 
 var queryPart_entityConstraints = (" \
     campaign.advertising_channel_type = 'SEARCH' \
+    AND ad_group.type IN ('SEARCH_STANDARD') \
     AND campaign.status IN ('ENABLED'" + (checkPausedCampaigns ? ", 'PAUSED'" : "") + ") \
-    AND ad_group.status IN ('ENABLED'" + (checkPausedAdGroups ? ", PAUSED'" : "") + ")"
+    AND ad_group.status IN ('ENABLED'" + (checkPausedAdGroups ? ", 'PAUSED'" : "") + ")"
 )
 
 var queryAllAdGroups = (" \
