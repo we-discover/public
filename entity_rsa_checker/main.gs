@@ -32,7 +32,7 @@ function main() {
     executionContext = getExecutionContext();
     var topLevelAccount = AdsApp.currentAccount();
     var totalGroupsWithoutAnRsa = 0;
-    accountCheckSummaries = [];
+    var accountCheckSummaries = [];
 
     // If MCC, run data collection process on a loop through all accounts
     if (executionContext === 'manager_account') {
