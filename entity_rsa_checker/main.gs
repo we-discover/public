@@ -30,7 +30,7 @@ var labelName = "no_rsa_present";
 // Script entrypoint
 function main() {
     var executionContext = getExecutionContext();
-    var topLevelAccount = AdsApp.currentAccount();
+    var topLevelAccountName = AdsApp.currentAccount().getName();
     var totalGroupsWithoutAnRsa = 0;
     var accountCheckSummaries = [];
 
@@ -56,7 +56,7 @@ function main() {
         sendEmail = true
     };
 
-    sendSummaryEmail(topLevelAccount, accountCheckSummaries);
+    sendSummaryEmail(topLevelAccountName, accountCheckSummaries);
 }
 
 
@@ -242,8 +242,8 @@ var emailFooter =
     "<a href = \"mailto:scripts@we-discover.com\">scripts@we-discover.com</a>";
 
 
-function sendSummaryEmail(topLevelAccount, accountChecks) {
-    var subject = topLevelAccount.getName() + " | WeDiscover RSA Ad Group Checker";
+function sendSummaryEmail(topLevelAccountName, accountChecks) {
+    var subject = topLevelAccountName + " | WeDiscover RSA Ad Group Checker";
 
     accountSections = "";
     for (var i in accountChecks) {
