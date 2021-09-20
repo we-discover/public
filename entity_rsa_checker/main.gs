@@ -18,7 +18,7 @@ var checkPausedAds = false;
 var alertOnNewEntitiesOnly = false;
 
 // EDIT ME -- Set email addresses to receive the alert, separated by commas
-var recipientEmails = "alex.hughes@we-discover.com";
+var recipientEmails = "example@gmail.com,example.2@gmail.com";
 
 // EDIT ME -- Label name for controlling the 'new' detection behaviour
 var labelName = "no_rsa_present";
