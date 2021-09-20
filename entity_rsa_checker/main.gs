@@ -231,7 +231,7 @@ var sendEmail = false;
 var emailIntroduction =
     "Hi there,<br><br>" +
     "This is your automated email from the WeDiscover RSA Ad Group Checker.<br><br>" +
-    "Included below are the details of ad groups without RSAs in your account(s)." +
+    "Included below are the details of ad groups without RSAs in your account(s). " +
     "The label '<i>" + labelName + "</i>' has been applied to all ad groups listed.<br><br>";
 
 var emailFooter =
