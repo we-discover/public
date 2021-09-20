@@ -18,7 +18,7 @@ var checkPausedAds = false;
 var alertOnNewEntitiesOnly = false;
 
 // EDIT ME -- Set email addresses to receive the alert, separated by commas
-var recipientEmails = "example@gmail.com,example.2@gmail.com";
+var recipientEmails = "alex.hughes@we-discover.com";
 
 // EDIT ME -- Label name for controlling the 'new' detection behaviour
 var labelName = "no_rsa_present";
@@ -187,12 +187,15 @@ function handleGroupsWithoutRsa(ids) {
 
 // ========= GAQL QUERIES ==============================================================================================
 
+var today = Utilities.formatDate(new Date(), AdsApp.currentAccount().getTimeZone(), "yyyy-MM-dd");
+
 var queryPart_entityConstraints = (" \
     campaign.advertising_channel_type = 'SEARCH' \
     AND ad_group.type IN ('SEARCH_STANDARD') \
     AND campaign.status IN ('ENABLED'" + (checkPausedCampaigns ? ", 'PAUSED'" : "") + ") \
-    AND ad_group.status IN ('ENABLED'" + (checkPausedAdGroups ? ", 'PAUSED'" : "") + ")"
-)
+    AND ad_group.status IN ('ENABLED'" + (checkPausedAdGroups ? ", 'PAUSED'" : "") + ") \
+    AND campaign.end_date >= '" + today + "'"
+);
 
 var queryAllAdGroups = (" \
     SELECT \
