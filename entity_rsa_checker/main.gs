@@ -54,9 +54,11 @@ function main() {
 
     if (totalGroupsWithoutAnRsa >= 1 && !alertOnNewEntitiesOnly) {
         sendEmail = true
-    };
-
+    }
+  
     sendSummaryEmail(topLevelAccountName, accountCheckSummaries);
+    Logger.log(totalGroupsWithoutAnRsa + " ad groups found without an RSA.");
+  
 }
 
 
