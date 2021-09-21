@@ -30,7 +30,7 @@ var labelName = "no_rsa_present";
 // Script entrypoint
 function main() {
     var executionContext = getExecutionContext();
-    var topLevelAccount = AdsApp.currentAccount();
+    var topLevelAccountName = AdsApp.currentAccount().getName();
     var totalGroupsWithoutAnRsa = 0;
     var accountCheckSummaries = [];
 
@@ -56,7 +56,7 @@ function main() {
         sendEmail = true
     };
 
-    sendSummaryEmail(topLevelAccount, accountCheckSummaries);
+    sendSummaryEmail(topLevelAccountName, accountCheckSummaries);
 }
 
 
@@ -187,12 +187,15 @@ function handleGroupsWithoutRsa(ids) {
 
 // ========= GAQL QUERIES ==============================================================================================
 
+var today = Utilities.formatDate(new Date(), AdsApp.currentAccount().getTimeZone(), "yyyy-MM-dd");
+
 var queryPart_entityConstraints = (" \
     campaign.advertising_channel_type = 'SEARCH' \
     AND ad_group.type IN ('SEARCH_STANDARD') \
     AND campaign.status IN ('ENABLED'" + (checkPausedCampaigns ? ", 'PAUSED'" : "") + ") \
-    AND ad_group.status IN ('ENABLED'" + (checkPausedAdGroups ? ", 'PAUSED'" : "") + ")"
-)
+    AND ad_group.status IN ('ENABLED'" + (checkPausedAdGroups ? ", 'PAUSED'" : "") + ") \
+    AND campaign.end_date >= '" + today + "'"
+);
 
 var queryAllAdGroups = (" \
     SELECT \
@@ -228,7 +231,7 @@ var sendEmail = false;
 var emailIntroduction =
     "Hi there,<br><br>" +
     "This is your automated email from the WeDiscover RSA Ad Group Checker.<br><br>" +
-    "Included below are the details of ad groups without RSAs in your account(s)." +
+    "Included below are the details of ad groups without RSAs in your account(s). " +
     "The label '<i>" + labelName + "</i>' has been applied to all ad groups listed.<br><br>";
 
 var emailFooter =
@@ -239,8 +242,8 @@ var emailFooter =
     "<a href = \"mailto:scripts@we-discover.com\">scripts@we-discover.com</a>";
 
 
-function sendSummaryEmail(topLevelAccount, accountChecks) {
-    var subject = topLevelAccount.getName() + " | WeDiscover RSA Ad Group Checker";
+function sendSummaryEmail(topLevelAccountName, accountChecks) {
+    var subject = topLevelAccountName + " | WeDiscover RSA Ad Group Checker";
 
     accountSections = "";
     for (var i in accountChecks) {
