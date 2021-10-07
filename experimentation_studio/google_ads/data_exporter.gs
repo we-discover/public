@@ -4,7 +4,7 @@
                  templated Google Sheet in order to perform statistical evaluations of
                  D&E tests or those configured with labelled Campaigns, AdGroups or Ads.
     License:     https://github.com/we-discover/public/blob/master/LICENSE
-    Version:     1.0.1
+    Version:     1.0.2
     Released:    2021-07-31
     Contact:     scripts@we-discover.com
 */
@@ -79,7 +79,7 @@ function validateConfiguration(config) {
   if (RegExp('^(label|experiment)$').test(config.config_type)) {
     assert("start date formatted correctly", validDatePattern.test(config.start_date));
     assert("end date formatted correctly",  validDatePattern.test(config.end_date));
-    assert("start date before end date", Number(config.start_date) < Number(config.end_date));
+    assert("start date before end date", Number(config.start_date) <= Number(config.end_date));
   }
 
   if (config.config_type === 'prepost') {
@@ -92,9 +92,9 @@ function validateConfiguration(config) {
     for (var i = 0; i < dateKeys.length; i++) {
       assert(dateKeys[i] + " formatted correctly", validDatePattern.test(config[dateKeys[i]]));
     }
-    assert("pre start date before end date", Number(config.pre_start_date) < Number(config.pre_end_date));
-    assert("post start date before end date", Number(config.post_start_date) < Number(config.post_end_date));
-    assert("pre period before post period", Number(config.pre_end_date) < Number(config.post_start_date));
+    assert("pre start date before end date", Number(config.pre_start_date) <= Number(config.pre_end_date));
+    assert("post start date before end date", Number(config.post_start_date) <= Number(config.post_end_date));
+    assert("pre period before post period", Number(config.pre_end_date) <= Number(config.post_start_date));
   }
 }
 
