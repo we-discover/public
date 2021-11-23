@@ -5,14 +5,96 @@ var includePausedRsas = false;
 var pullFromPausedEtas = false;
 
 // Script entrypoint
-function main() {
+function main(){
+  var executionContext = getExecutionContext();
+  var topLevelAccountName = AdsApp.currentAccount().getName();
+  var topLevelAccountId = AdsApp.currentAccount().getCustomerId();
+  var ssName = topLevelAccountName + " (" + topLevelAccountId + ") | ETA to RSA Builder";
+  
+  Logger.log("Making Google Sheet...");
+  var ss = SpreadsheetApp.create(ssName);
+  
+  // If MCC, run data process on a loop through all accounts
+  if (executionContext === 'manager_account') {
+    var accountIterator = AdsManagerApp.accounts().get();
+    while(accountIterator.hasNext()) {
+      AdsManagerApp.select(accountIterator.next());
+      
+      var accountName = AdsApp.currentAccount().getName();
+      var accountId = AdsApp.currentAccount().getCustomerId();
+      var accountNameAndId = accountName + " (" + accountId + ")";  
+      var successCount = 0;
+      
+      Logger.log("Looking in account " + accountNameAndId + " ...");
+      var assets = getAssets(accountName, accountId);
+      if (assets !== 'no_rsas') {
+        var sheet = ss.insertSheet(accountNameAndId)
+        var maxNoOfAssets = getMaxAssets(assets);
+        writeToSheet(sheet, assets, maxNoOfAssets, accountName, accountId);
+        
+        successCount++;
+      }
+      
+      else if (assets === 'no_rsas' && accountIterator.hasNext()) {
+        Logger.log("Trying next account...");
+      }
+      else if (assets === 'no_rsas' && !accountIterator.hasNext()) {
+        Logger.log("No more accounts found. Terminating script.");
+      }   
+       
+      Logger.log("--------------------------------------------------");
+    }
+    
+    // Remove first sheet, which is blank
+    ss.deleteSheet(ss.getSheets()[0]);
+    if (successCount === 0) {
+      Logger.log("No ad groups missing RSAs found. Google Sheet can be safely deleted.");
+    }
+    Logger.log("Script run complete. Google Sheet location: " + ss.getUrl());
+  }
+  
+  // If child account, process on that account only
+  else if (executionContext === 'client_account') {
+    var accountName = AdsApp.currentAccount().getName();
+    var accountId = AdsApp.currentAccount().getCustomerId();
+    var accountNameAndId = accountName + " (" + accountId + ")";
+    var sheet = ss.getSheets()[0].setName(accountNameAndId);
+    
+    var assets = getAssets(accountName, accountId);
+    if (assets === 'no_rsas') {
+      Logger.log("Terminating script. Google Sheet can be safely deleted.");
+    }
+    
+    else if (assets !== 'no_rsas') {
+      var maxNoOfAssets = getMaxAssets(assets);
+      writeToSheet(sheet, assets, maxNoOfAssets, accountName, accountId);
+    }
+    
+    Logger.log("--------------------------------------------------");
+    Logger.log("Script run complete. Google Sheet location: " + ss.getUrl()); 
+
+  }
+}
+
+// ========= UTILITY FUNCTIONS ==========================================================================================
+
+// Determine the type of account in which the script is running
+function getExecutionContext() {
+    if (typeof AdsManagerApp != "undefined") {
+        return 'manager_account';
+    }
+    return 'client_account';
+}
+
+// Collect ETA assets and group by ad group ID
+function getAssets(accountName, accountId) {
   Logger.log("Getting ad groups without RSAs...");
   var adGroupIdsWithoutRsas = getAdGroupIdsWithoutRsas();
   
   Logger.log(adGroupIdsWithoutRsas.length + " ad groups found without RSAs.");
   if(adGroupIdsWithoutRsas.length === 0) {
-    Logger.log("Terminating script.");
-    return;
+    Logger.log("No RSAs found in " + accountName + " (" + accountId + ").");
+    return "no_rsas";
   }
   
   var assetsQueryWithIds = assetsQueryTemplate.replace("*INSERT_AD_GROUP_IDS*", adGroupIdsWithoutRsas.join(","));
@@ -42,6 +124,7 @@ function main() {
     var path1 = reportRow['ad_group_ad.ad.expanded_text_ad.path1'];
     var path2 = reportRow['ad_group_ad.ad.expanded_text_ad.path2'];
     var finalUrl = reportRow['ad_group_ad.ad.final_urls'];
+    var finalMobileUrl = reportRow['ad_group_ad.ad.final_mobile_urls'];
 
     
     groupedAssets[adGroupId] = groupedAssets[adGroupId] || {
@@ -53,7 +136,8 @@ function main() {
       'descriptions': [],
       'path1s': [],
       'path2s': [],
-      'final_urls': []
+      'final_urls': [],
+      'final_mobile_urls': []
      };
     
     pushElementsIfNeeded(groupedAssets[adGroupId]['headlines'], [headline1, headline2, headline3]);
@@ -61,28 +145,18 @@ function main() {
     pushElementsIfNeeded(groupedAssets[adGroupId]['path1s'], [path1]);
     pushElementsIfNeeded(groupedAssets[adGroupId]['path2s'], [path2]);
     pushElementsIfNeeded(groupedAssets[adGroupId]['final_urls'], [finalUrl]);
+    pushElementsIfNeeded(groupedAssets[adGroupId]['final_mobile_urls'], [finalMobileUrl]);
     
   }
   
-  Logger.log("Counting assets...");
-  var maxNoOfAssets = getMaxAssets(groupedAssets);
-  
-  Logger.log("Making Google Sheet...");
-//  var ss = SpreadsheetApp.create("Test");
-  var ss = SpreadsheetApp.openByUrl("https://docs.google.com/spreadsheets/d/1D1gASkVDWM0C_RHwwk_f8R-Gij0xlJu6OF81jg9xWSI/edit#gid=0");
-  var sheet = ss.getSheets()[0];
-  
-  Logger.log("Setting headers...");
-  setHeaders(sheet, maxNoOfAssets);
-  
-  Logger.log("Pushing asset values...");
-  pushDataToSheet(sheet, groupedAssets, maxNoOfAssets)
-  
-  Logger.log("-----------------------------\nScript run complete. Google Sheet location: " + ss.getUrl());
+  return groupedAssets;
 }
 
-
-// ========= UTILITY FUNCTIONS ==========================================================================================
+// Write headers and body to sheet
+function writeToSheet(sheet, groupedAssets, maxNoOfAssets, accountName, accountId) {
+  setHeaders(sheet, maxNoOfAssets);
+  pushDataToSheet(sheet, groupedAssets, maxNoOfAssets, accountName, accountId);
+}
 
 // Set headers in a sheet
 function setHeaders(sheet, maxNoAssets) {
@@ -120,6 +194,12 @@ function setHeaders(sheet, maxNoAssets) {
   }
   numColumns += Math.max(1, maxNoAssets['max_urls']);
   
+  headers.push("Final Mobile URL(s)");
+  for (var i = 1; i < maxNoAssets['max_mobile_urls']; i++) {
+    headers.push("...");
+  }
+  numColumns += Math.max(1, maxNoAssets['max_mobile_urls']);
+  
   // Font weight row to allow us to set the headers to bold
   var boldings = [];
   for (var i = 0; i < numColumns; i++) {
@@ -129,20 +209,20 @@ function setHeaders(sheet, maxNoAssets) {
   // Set values and bolding
   sheet.getRange(1, 1, 1, numColumns).setValues([headers]).setFontWeights([boldings]);
   
-  // Autosize columns
-  sheet.autoResizeColumns(1, numColumns);
-  
   return null;
 }
 
 // Set outputs for sheet
-function pushDataToSheet(sheet, groupedAssets, maxNoAssets) {
+function pushDataToSheet(sheet, groupedAssets, maxNoAssets, accountName, accountId) {
   var outputData = []
   
   for (var adGroupId in groupedAssets) {
     var data = groupedAssets[adGroupId];
     
-    var row = ["-", "-", data['campaign_name'], data['campaign_id'], data['ad_group_name'], data['ad_group_id']];
+    var row = [accountName, accountId, data['campaign_name'], data['campaign_id'], data['ad_group_name'], data['ad_group_id']];
+    
+    // For each type of asset, must blank fill columns where the ad group has less than the maximum number of that asset type
+    // This ensures columns all line up with their headers
     row.push.apply(row, data['headlines'])
     for (var i = data['headlines'].length; i < maxNoAssets['max_headlines']; i++) {
       row.push("");
@@ -164,17 +244,22 @@ function pushDataToSheet(sheet, groupedAssets, maxNoAssets) {
     for (var i = data['final_urls'].length; i < maxNoAssets['max_urls']; i++) {
       row.push("");
     }
+    row.push.apply(row, data['final_mobile_urls'])
+    for (var i = data['final_mobile_urls'].length; i < maxNoAssets['max_mobile_urls']; i++) {
+      row.push("");
+    }
     
-//    outputData.push(row);
-    sheet.appendRow(row);
+    outputData.push(row);
   }
   
-//  Logger.log(outputData[0]);
-//  sheet.getRange(2, 1, outputData.length, outputData[0].length).setValues(outputData);
+  // Push to sheet and autosize columns
+  sheet.getRange(2, 1, outputData.length, outputData[0].length).setValues(outputData);
+  sheet.autoResizeColumns(1, outputData[0].length);
   
+  return null;
 }
 
-// Push elements of an array into another array, if new elements are not null and not present in the original array
+// Push elements of an array into another array, if new elements are not null/undefined and not present in the original array
 function pushElementsIfNeeded(arr, elements) {
   for (var i = 0; i < elements.length; i++) {
     var el = elements[i]; 
@@ -194,7 +279,8 @@ function getMaxAssets(obj) {
     'max_descriptions': 0,
     'max_path1s': 0,
     'max_path2s': 0,
-    'max_urls': 0
+    'max_urls': 0,
+    'max_mobile_urls': 0
   }
   
   for (var adGroupId in obj) {
@@ -203,6 +289,7 @@ function getMaxAssets(obj) {
     maxs['max_path1s'] = Math.max(maxs['max_path1s'], obj[adGroupId]['path1s'].length);
     maxs['max_path2s'] = Math.max(maxs['max_path2s'], obj[adGroupId]['path2s'].length);
     maxs['max_urls'] = Math.max(maxs['max_urls'], obj[adGroupId]['final_urls'].length);
+    maxs['max_mobile_urls'] = Math.max(maxs['max_mobile_urls'], obj[adGroupId]['final_mobile_urls'].length);
   }
   
   return maxs;
@@ -271,7 +358,7 @@ var assetsQueryTemplate = (" \
     ad_group_ad.ad.expanded_text_ad.headline_part1, ad_group_ad.ad.expanded_text_ad.headline_part2, ad_group_ad.ad.expanded_text_ad.headline_part3, \
     ad_group_ad.ad.expanded_text_ad.description, ad_group_ad.ad.expanded_text_ad.description2, \
     ad_group_ad.ad.expanded_text_ad.path1, ad_group_ad.ad.expanded_text_ad.path2, \
-    ad_group_ad.ad.final_urls, \
+    ad_group_ad.ad.final_urls, ad_group_ad.ad.final_mobile_urls, \
     campaign.name, campaign.id, ad_group.name, ad_group.id \
   FROM \
     ad_group_ad \
