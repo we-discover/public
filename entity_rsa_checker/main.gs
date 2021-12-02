@@ -1,5 +1,3 @@
-"use strict";
-
 // EDIT ME -- Check for RSAs in Paused Ads, Ad Groups or Campaigns
 var checkPausedCampaigns = false;
 var checkPausedAdGroups = false;
