@@ -99,7 +99,7 @@ function getAssets(accountName, accountId) {
   
   var assetsQueryWithIds = assetsQueryTemplate.replace("*INSERT_AD_GROUP_IDS*", adGroupIdsWithoutRsas.join(","));
   Logger.log("Getting ETAs from ad groups without RSAs...");
-  var assetsReport = AdsApp.report(assetsQueryWithIds).rows();
+  var assetsReport = AdsApp.search(assetsQueryWithIds);
   
   var groupedAssets = {};
   
@@ -108,25 +108,29 @@ function getAssets(accountName, accountId) {
     var reportRow = assetsReport.next();
     
     // Attributes  
-    var adGroupId = reportRow['ad_group.id'];
-    var adGroupName = reportRow['ad_group.name'];
-    var campaignId = reportRow['campaign.id'];
-    var campaignName = reportRow['campaign.name'];
+    var adGroupId = reportRow.adGroup.id;
+    var adGroupName = reportRow.adGroup.name;
+    var campaignId = reportRow.campaign.id;
+    var campaignName = reportRow.campaign.name;
 
     // Assets
-    var headline1 = reportRow['ad_group_ad.ad.expanded_text_ad.headline_part1'];
-    var headline2 = reportRow['ad_group_ad.ad.expanded_text_ad.headline_part2'];
-    var headline3 = reportRow['ad_group_ad.ad.expanded_text_ad.headline_part3'];
+    var headline1 = reportRow.adGroupAd.ad.expandedTextAd.headlinePart1;
+    var headline2 = reportRow.adGroupAd.ad.expandedTextAd.headlinePart2;
+    var headline3 = reportRow.adGroupAd.ad.expandedTextAd.headlinePart3;
 
-    var description1 = reportRow['ad_group_ad.ad.expanded_text_ad.description'];
-    var description2 = reportRow['ad_group_ad.ad.expanded_text_ad.description2'];
+    var description1 = reportRow.adGroupAd.ad.expandedTextAd.description;
+    var description2 = reportRow.adGroupAd.ad.expandedTextAd.description2;
 
-    var path1 = reportRow['ad_group_ad.ad.expanded_text_ad.path1'];
-    var path2 = reportRow['ad_group_ad.ad.expanded_text_ad.path2'];
-    var finalUrl = reportRow['ad_group_ad.ad.final_urls'];
-    var finalMobileUrl = reportRow['ad_group_ad.ad.final_mobile_urls'];
-
+    var path1 = reportRow.adGroupAd.ad.expandedTextAd.path1;
+    var path2 = reportRow.adGroupAd.ad.expandedTextAd.path2;
+    var finalUrl = reportRow.adGroupAd.ad.finalUrls[0];
     
+    // Mobile URL not always present
+    var finalMobileUrl = "";
+    if (reportRow.adGroupAd.ad.finalMobileUrls) {
+      var finalMobileUrl = reportRow.adGroupAd.ad.finalMobileUrls[0];
+    }
+     
     groupedAssets[adGroupId] = groupedAssets[adGroupId] || {
       'ad_group_id': adGroupId,
       'ad_group_name': adGroupName,
