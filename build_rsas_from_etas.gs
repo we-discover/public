@@ -1,3 +1,13 @@
+/*
+    Name:        WeDiscover - ETA To RSA Builder, Google Ads Script
+    Description: A script to build RSA ad copy from existing ETA ad
+                 copy.
+    License:     https://github.com/we-discover/public/blob/master/LICENSE
+    Version:     1.0.0
+    Released:    2021-12-13
+    Contact:     scripts@we-discover.com
+*/
+
 // EDIT ME -- Check for RSAs in Paused Ads, Ad Groups or Campaigns
 var checkPausedCampaigns = false;
 var checkPausedAdGroups = false;
