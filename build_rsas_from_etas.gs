@@ -228,7 +228,9 @@ function setHeaders(sheet, maxNoAssets) {
 
 // Set outputs for sheet
 function pushDataToSheet(sheet, groupedAssets, maxNoAssets, accountName, accountId) {
-  var outputData = []
+  Logger.log("Pushing to sheet...");
+  
+  var outputData = [];
   
   for (var adGroupId in groupedAssets) {
     var data = groupedAssets[adGroupId];
