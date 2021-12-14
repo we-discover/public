@@ -90,7 +90,7 @@ function main(){
 
 // Determine the type of account in which the script is running
 function getExecutionContext() {
-    if (typeof AdsManagerApp != "undefined") {
+    if (typeof AdsManagerApp !== undefined) {
         return 'manager_account';
     }
     return 'client_account';
