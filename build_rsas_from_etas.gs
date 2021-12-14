@@ -20,9 +20,8 @@ function main(){
   var topLevelAccountName = AdsApp.currentAccount().getName();
   var topLevelAccountId = AdsApp.currentAccount().getCustomerId();
   var ssName = topLevelAccountName + " (" + topLevelAccountId + ") | ETA to RSA Builder";
-  
-  Logger.log("Making Google Sheet...");
-  var ss = SpreadsheetApp.create(ssName);
+  var ssMade = false;
+  var ss = null;
   
   // If MCC, run data process on a loop through all accounts
   if (executionContext === 'manager_account') {
@@ -33,16 +32,21 @@ function main(){
       var accountName = AdsApp.currentAccount().getName();
       var accountId = AdsApp.currentAccount().getCustomerId();
       var accountNameAndId = accountName + " (" + accountId + ")";  
-      var successCount = 0;
       
       Logger.log("Looking in account " + accountNameAndId + " ...");
       var assets = getAssets(accountName, accountId);
       if (assets !== 'no_rsas') {
+        
+        if (ssMade === false) {
+          Logger.log("Making Google Sheet...");
+          ss = SpreadsheetApp.create(ssName);
+          ssMade = true;
+        }
+        
         var sheet = ss.insertSheet(accountNameAndId)
         var maxNoOfAssets = getMaxAssets(assets);
         writeToSheet(sheet, assets, maxNoOfAssets, accountName, accountId);
         
-        successCount++;
       }
       
       else if (assets === 'no_rsas' && accountIterator.hasNext()) {
@@ -57,10 +61,12 @@ function main(){
     
     // Remove first sheet, which is blank
     ss.deleteSheet(ss.getSheets()[0]);
-    if (successCount === 0) {
-      Logger.log("No ad groups missing RSAs found. Google Sheet can be safely deleted.");
+    if (ssMade === false) {
+      Logger.log("Script run complete. No ad groups missing RSAs found.");
     }
-    Logger.log("Script run complete. Google Sheet location: " + ss.getUrl());
+    else if (ssMade === true) {
+      Logger.log("Script run complete. Google Sheet location: " + ss.getUrl());
+    }
   }
   
   // If child account, process on that account only
@@ -68,21 +74,23 @@ function main(){
     var accountName = AdsApp.currentAccount().getName();
     var accountId = AdsApp.currentAccount().getCustomerId();
     var accountNameAndId = accountName + " (" + accountId + ")";
-    var sheet = ss.getSheets()[0].setName(accountNameAndId);
     
     var assets = getAssets(accountName, accountId);
     if (assets === 'no_rsas') {
-      Logger.log("Terminating script. Google Sheet can be safely deleted.");
+      Logger.log("--------------------------------------------------");
+      Logger.log("Script run complete. No ad groups missing RSAs found.");
     }
     
     else if (assets !== 'no_rsas') {
+      ss = SpreadsheetApp.create(ssName);
+      var sheet = ss.getSheets()[0].setName(accountNameAndId);
+      ssMade = true;
+
       var maxNoOfAssets = getMaxAssets(assets);
       writeToSheet(sheet, assets, maxNoOfAssets, accountName, accountId);
+      Logger.log("--------------------------------------------------");
+      Logger.log("Script run complete. Google Sheet location: " + ss.getUrl()); 
     }
-    
-    Logger.log("--------------------------------------------------");
-    Logger.log("Script run complete. Google Sheet location: " + ss.getUrl()); 
-
   }
 }
 
@@ -90,7 +98,7 @@ function main(){
 
 // Determine the type of account in which the script is running
 function getExecutionContext() {
-    if (typeof AdsManagerApp !== undefined) {
+    if (typeof AdsManagerApp != 'undefined') {
         return 'manager_account';
     }
     return 'client_account';
