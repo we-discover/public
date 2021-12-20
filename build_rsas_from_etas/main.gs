@@ -190,7 +190,7 @@ function writeToSheet(sheet, groupedAssets, maxNoOfAssets, accountName, accountI
 function setHeaders(sheet, maxNoAssets) {
   
   // Attribute headers
-  var headers = ["Account Name", "Account ID", "Campaign Name", "Campaign ID", "Ad Group Name", "Ad Group ID"];
+  var headers = ["Account", "Account ID", "Campaign", "Campaign ID", "Ad Group", "Ad Group ID"];
   var numColumns = headers.length;
   
   // Asset headers (of variable length)
