@@ -221,7 +221,7 @@ function setHeaders(sheet, maxNoAssets) {
   }
   numColumns += Math.max(1,maxNoAssets['max_path1s'], 1);
 
-  headers.push("Path 2(s)");
+  headers.push("Path 2");
   for (var i = 1; i < maxNoAssets['max_path2s']; i++) {
     headers.push("Additional Path 2");
   }
