@@ -108,10 +108,10 @@ function getExecutionContext() {
 function getAssets(accountName, accountId) {
   Logger.log("Getting ad groups without RSAs...");
   var adGroupIdsWithoutRsas = getAdGroupIdsWithoutRsas();
-
+  
   Logger.log(adGroupIdsWithoutRsas.length + " ad groups found without RSAs.");
   if(adGroupIdsWithoutRsas.length === 0) {
-    Logger.log("No RSAs found in " + accountName + " (" + accountId + ").");
+    Logger.log("No ad groups without RSAs found in " + accountName + " (" + accountId + ").");
     return "no_rsas";
   }
 
@@ -175,7 +175,7 @@ function getAssets(accountName, accountId) {
   groupedAssets[adGroupId]['headlines'] = groupedAssets[adGroupId]['headlines'].filter(function(x) {return x.indexOf('{') !== -1;});
   groupedAssets[adGroupId]['descriptions'] = groupedAssets[adGroupId]['descriptions'].filter(function(x) {return x.indexOf('{') !== -1;});
 
-
+  Logger.log(Object.keys(groupedAssets).length + " ad groups have ETAs meeting criteria: ETA status = " + (pullFromPausedEtas ? "paused or enabled" : "enabled only"));
 
   return groupedAssets;
 }
