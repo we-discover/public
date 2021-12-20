@@ -175,7 +175,7 @@ function getAssets(accountName, accountId) {
   groupedAssets[adGroupId]['headlines'] = groupedAssets[adGroupId]['headlines'].filter(function(x) {return x.indexOf('{') !== -1;});
   groupedAssets[adGroupId]['descriptions'] = groupedAssets[adGroupId]['descriptions'].filter(function(x) {return x.indexOf('{') !== -1;});
 
-  Logger.log(Object.keys(groupedAssets).length + " ad groups have ETAs meeting criteria: ETA status = " + (pullFromPausedEtas ? "paused or enabled" : "enabled only"));
+  Logger.log(Object.keys(groupedAssets).length + " ad groups have ETAs meeting criteria: ETA status = " + (pullFromPausedEtas ? "paused or enabled." : "enabled only."));
 
   return groupedAssets;
 }
