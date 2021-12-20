@@ -15,7 +15,7 @@ var includePausedRsas = false;
 var pullFromPausedEtas = false;
 
 // Script entrypoint
-function main(){
+function main() {
   var executionContext = getExecutionContext();
   var topLevelAccountName = AdsApp.currentAccount().getName();
   var topLevelAccountId = AdsApp.currentAccount().getCustomerId();
@@ -170,6 +170,12 @@ function getAssets(accountName, accountId) {
     pushElementsIfNeeded(groupedAssets[adGroupId]['final_mobile_urls'], [finalMobileUrl]);
     
   }
+  
+  // Filter out ad customiser assets
+  groupedAssets[adGroupId]['headlines'] = groupedAssets[adGroupId]['headlines'].filter(function(x) {return x.indexOf('{') !== -1;});
+  groupedAssets[adGroupId]['descriptions'] = groupedAssets[adGroupId]['descriptions'].filter(function(x) {return x.indexOf('{') !== -1;});
+
+  
   
   return groupedAssets;
 }
