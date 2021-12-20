@@ -381,7 +381,7 @@ FROM \
 ad_group \
 WHERE \
 " + constraintsForQueries
-                       ).replace(/ +(?= )/g, '');
+).replace(/ +(?= )/g, '');
 
 var queryAdGroupsWithRsa = (" \
 SELECT \
