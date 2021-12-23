@@ -177,10 +177,17 @@ function getAssets(accountName, accountId) {
     pushElementsIfNeeded(groupedAssets[adGroupId]['final_mobile_urls'], [finalMobileUrl]);
 
   }
+  
+  var numRelevantAdGroups = Object.keys(groupedAssets).length;
+  Logger.log(numRelevantAdGroups + " ad groups have ETAs meeting criteria: ETA status = " + (pullFromPausedEtas ? "paused or enabled" : "enabled only"));
 
-  Logger.log(Object.keys(groupedAssets).length + " ad groups have ETAs meeting criteria: ETA status = " + (pullFromPausedEtas ? "paused or enabled" : "enabled only"));
-
-  return groupedAssets;
+  if (numRelevantAdGroups === 0) {
+    return 'no_rsas'
+  }
+  
+  else if (numRelevantAdGroups > 0) {
+    return groupedAssets;
+  }
 }
 
 // Write headers and body to sheet
