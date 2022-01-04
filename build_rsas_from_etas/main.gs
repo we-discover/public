@@ -161,23 +161,33 @@ function getAssets(accountName, accountId) {
       'final_urls': [],
       'final_mobile_urls': []
     };
+    
+    var headlines = [headline1, headline2, headline3];
+    var descriptions = [description1, description2];
+    
+    // Filter out HLs/DLs which use ad customisers, as these are formatted differently in RSAs
+    var filteredHeadlines = headlines.filter(function(x) {return x.indexOf('{') === -1;});
+    var filteredDescriptions = descriptions.filter(function(x) {return x.indexOf('{') === -1;});
 
-    pushElementsIfNeeded(groupedAssets[adGroupId]['headlines'], [headline1, headline2, headline3]);
-    pushElementsIfNeeded(groupedAssets[adGroupId]['descriptions'], [description1, description2]);
+    pushElementsIfNeeded(groupedAssets[adGroupId]['headlines'], filteredHeadlines);
+    pushElementsIfNeeded(groupedAssets[adGroupId]['descriptions'], filteredDescriptions);
     pushElementsIfNeeded(groupedAssets[adGroupId]['path1s'], [path1]);
     pushElementsIfNeeded(groupedAssets[adGroupId]['path2s'], [path2]);
     pushElementsIfNeeded(groupedAssets[adGroupId]['final_urls'], [finalUrl]);
     pushElementsIfNeeded(groupedAssets[adGroupId]['final_mobile_urls'], [finalMobileUrl]);
 
   }
+  
+  var numRelevantAdGroups = Object.keys(groupedAssets).length;
+  Logger.log(numRelevantAdGroups + " ad groups have ETAs meeting criteria: ETA status = " + (pullFromPausedEtas ? "paused or enabled" : "enabled only"));
 
-  // Filter out ad customiser assets
-  groupedAssets[adGroupId]['headlines'] = groupedAssets[adGroupId]['headlines'].filter(function(x) {return x.indexOf('{') !== -1;});
-  groupedAssets[adGroupId]['descriptions'] = groupedAssets[adGroupId]['descriptions'].filter(function(x) {return x.indexOf('{') !== -1;});
-
-  Logger.log(Object.keys(groupedAssets).length + " ad groups have ETAs meeting criteria: ETA status = " + (pullFromPausedEtas ? "paused or enabled." : "enabled only."));
-
-  return groupedAssets;
+  if (numRelevantAdGroups === 0) {
+    return 'no_rsas'
+  }
+  
+  else if (numRelevantAdGroups > 0) {
+    return groupedAssets;
+  }
 }
 
 // Write headers and body to sheet
