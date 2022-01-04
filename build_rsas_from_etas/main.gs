@@ -162,9 +162,18 @@ function getAssets(accountName, accountId) {
       'final_mobile_urls': []
     };
     
-    var headlines = [headline1, headline2, headline3];
-    var descriptions = [description1, description2];
+    var headlines = [headline1, headline2];
+    var descriptions = [description1];
     
+    // Add HL3 & D2 only if they exist in ad copy
+    if (headline3 !== undefined) {
+      headlines.push(headline3); 
+    }
+    
+    if(description2 !== undefined) {
+      descriptions.push(description2); 
+    }
+      
     // Filter out HLs/DLs which use ad customisers, as these are formatted differently in RSAs
     var filteredHeadlines = headlines.filter(function(x) {return x.indexOf('{') === -1;});
     var filteredDescriptions = descriptions.filter(function(x) {return x.indexOf('{') === -1;});
