@@ -4,7 +4,7 @@
                  copy.
     License:     https://github.com/we-discover/public/blob/master/LICENSE
     Version:     1.0.0
-    Released:    2021-12-13
+    Released:    2022-01-05
     Contact:     scripts@we-discover.com
 */
 
@@ -162,9 +162,18 @@ function getAssets(accountName, accountId) {
       'final_mobile_urls': []
     };
     
-    var headlines = [headline1, headline2, headline3];
-    var descriptions = [description1, description2];
+    var headlines = [headline1, headline2];
+    var descriptions = [description1];
     
+    // Add HL3 & D2 only if they exist in ad copy
+    if (headline3 !== undefined) {
+      headlines.push(headline3); 
+    }
+    
+    if(description2 !== undefined) {
+      descriptions.push(description2); 
+    }
+      
     // Filter out HLs/DLs which use ad customisers, as these are formatted differently in RSAs
     var filteredHeadlines = headlines.filter(function(x) {return x.indexOf('{') === -1;});
     var filteredDescriptions = descriptions.filter(function(x) {return x.indexOf('{') === -1;});
@@ -284,11 +293,13 @@ function pushDataToSheet(sheet, groupedAssets, maxNoAssets, accountName, account
       row.push("");
     }
     row.push.apply(row, data['path1s'])
-    for (var i = data['path1s'].length; i < maxNoAssets['max_path1s']; i++) {
+    // Must ensure this loop runs at least once as there may be no Path 1s, but must still leave column blank
+    for (var i = data['path1s'].length; i < Math.max(maxNoAssets['max_path1s'], 1); i++) {
       row.push("");
     }
     row.push.apply(row, data['path2s'])
-    for (var i = data['path2s'].length; i < maxNoAssets['max_path2s']; i++) {
+    // Must ensure this loop runs at least once as there may be no Path 2s, but must still leave column blank
+    for (var i = data['path2s'].length; i < Math.max(maxNoAssets['max_path2s'], 1); i++) {
       row.push("");
     }
     row.push.apply(row, data['final_urls'])
