@@ -4,7 +4,7 @@
                  copy.
     License:     https://github.com/we-discover/public/blob/master/LICENSE
     Version:     1.0.0
-    Released:    2021-12-13
+    Released:    2022-01-05
     Contact:     scripts@we-discover.com
 */
 
