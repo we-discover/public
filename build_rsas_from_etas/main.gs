@@ -293,11 +293,13 @@ function pushDataToSheet(sheet, groupedAssets, maxNoAssets, accountName, account
       row.push("");
     }
     row.push.apply(row, data['path1s'])
-    for (var i = data['path1s'].length; i < maxNoAssets['max_path1s']; i++) {
+    // Must ensure this loop runs at least once as there may be no Path 1s, but must still leave column blank
+    for (var i = data['path1s'].length; i < Math.max(maxNoAssets['max_path1s'], 1); i++) {
       row.push("");
     }
     row.push.apply(row, data['path2s'])
-    for (var i = data['path2s'].length; i < maxNoAssets['max_path2s']; i++) {
+    // Must ensure this loop runs at least once as there may be no Path 2s, but must still leave column blank
+    for (var i = data['path2s'].length; i < Math.max(maxNoAssets['max_path2s'], 1); i++) {
       row.push("");
     }
     row.push.apply(row, data['final_urls'])
