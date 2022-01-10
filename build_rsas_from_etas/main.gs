@@ -4,7 +4,7 @@
                  copy.
     License:     https://github.com/we-discover/public/blob/master/LICENSE
     Version:     1.0.0
-    Released:    2022-01-05
+    Released:    2022-01-10
     Contact:     scripts@we-discover.com
 */
 
@@ -209,7 +209,7 @@ function writeToSheet(sheet, groupedAssets, maxNoOfAssets, accountName, accountI
 function setHeaders(sheet, maxNoAssets) {
 
   // Attribute headers
-  var headers = ["Account", "Account ID", "Campaign", "Campaign ID", "Ad Group", "Ad Group ID"];
+  var headers = ["Account", "Account ID", "Campaign", "Campaign ID", "Ad Group", "Ad Group ID", "Ad Type"];
   var numColumns = headers.length;
 
   // Asset headers (of variable length)
@@ -279,7 +279,7 @@ function pushDataToSheet(sheet, groupedAssets, maxNoAssets, accountName, account
   for (var adGroupId in groupedAssets) {
     var data = groupedAssets[adGroupId];
 
-    var row = [accountName, accountId, data['campaign_name'], data['campaign_id'], data['ad_group_name'], data['ad_group_id']];
+    var row = [accountName, accountId, data['campaign_name'], data['campaign_id'], data['ad_group_name'], data['ad_group_id'], "Responsive search ad"];
 
     // For each type of asset, must blank fill columns where the ad group has less than the maximum number of that asset type
     // This ensures columns all line up with their headers
