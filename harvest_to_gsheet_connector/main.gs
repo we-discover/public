@@ -18,7 +18,7 @@
      * script was originally developed but there's a lot of opportunity
      * for adapting and extending this.
      * 
-     * Currently populated for all bulk endpoints
+     * Currently populated for all bulk endp
      * 
      * name:    Name, used as identifier and export sheet name
      * path:    The Harvest API endpoint to request data from (see https://help.getharvest.com/api-v2/)
@@ -119,7 +119,7 @@ function exportHarvestDataFromConfig(config) {
     if (isPaged) {
       var isLast = responseContent.links.next === null;
       results = responseContent[config.path];
-4
+
       while(!isLast) {
         Logger.log(responseContent.links.next);
 
@@ -158,16 +158,48 @@ function writeJsonToGsheet(outputSheetName, jsonResults){
   outputSheet.clear();
   Logger.log('Connected and cleared output sheet: ' + outputSheetName);
 
-  Logger.log('Writing data to: ' + outputSheetName);
-  var columnHeaders = [Object.keys(jsonResults[0])];
-  outputSheet.getRange(1,1, columnHeaders.length, columnHeaders[0].length)
-    .setValues(columnHeaders);
-
+  Logger.log('Flattening data');
+  var flatJsonResults = [];
   var rowValues = []
   for (var i = 0; i < jsonResults.length; i++) {
-    rowValues.push(Object.values(jsonResults[i]));
+    flatJsonResults.push(Object.flatten(jsonResults[i]));
+    rowValues.push(Object.values(flatJsonResults[i]));
   }
+
+  Logger.log('Writing data to: ' + outputSheetName);
+  var columnHeaders = [Object.keys(flatJsonResults[0])];
+  outputSheet.getRange(1,1, columnHeaders.length, columnHeaders[0].length)
+    .setValues(columnHeaders);
+    
   outputSheet.getRange(2, 1, rowValues.length, columnHeaders[0].length)
     .setValues(rowValues);
+}
+
+
+/**
+    * Flatten method for objects
+    * Adapted from method authored by: https://stackoverflow.com/users/1048572/bergi
+*/
+Object.flatten = function(data) {
+    var result = {};
+    function recurse (cur, prop) {
+        if (prop === 'external_reference') {
+            
+        } else if (Object(cur) !== cur) {
+            result[prop] = cur;
+        } else if (Array.isArray(cur)) {
+            result[prop] = cur.join(', ');
+        } else {
+            var isEmpty = true;
+            for (var p in cur) {
+                isEmpty = false;
+                recurse(cur[p], prop ? prop+"."+p : p);
+            }
+            if (isEmpty && prop)
+                result[prop] = {};
+        }
+    }
+    recurse(data, "");
+    return result;
 }
 
