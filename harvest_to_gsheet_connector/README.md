@@ -20,7 +20,7 @@ that you wish export (see [export configuration](#export-configuration) for more
 
 
 
-### Credentials
+### Credentials
 
 Credentials are managed using using the Google Apps Scripts 
 [PropertiesService](https://developers.google.com/apps-script/reference/properties). In this script,
