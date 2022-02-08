@@ -6,18 +6,21 @@ While this is a fairly crude application, this is a situation we encountered wit
 and so we thought we'd share the love to help anyone in a similar situation.
 
 
-## Usage
+
+### Usage
 
 1. Create a new [Google Apps Script Project](https://script.google.com/home).
-2. Copy the contents of each file - with a .gs` extension - in this folder to a corresponding file.
+2. Copy the contents of each file - with a .gs extension - in this folder to a corresponding file.
 3. Set your Harvest API  as the appropriate userProperties by running `setUserProperties` in 
 `properties.gs`. This is one of the most secure ways to handle credentials in Google Apps Scripts.
-(see [credentials](#credentials) for more detail).i
+(see [credentials](#credentials) for more detail).
 4. Populate the `exportConfigs` in `main.gs` with details of the endpoints and destinations sheets 
 that you wish export (see [export configuration](#export-configuration) for more details).
 5. (Optional) Schedule this script to run on a regular basis.
 
-## Credentials
+
+
+### Credentials
 
 Credentials are managed using using the Google Apps Scripts 
 [PropertiesService](https://developers.google.com/apps-script/reference/properties). In this script,
@@ -32,7 +35,8 @@ Credential                  | Description
 `HARVEST_ACCOUNT_ID`        | The Harvest account ID that you wish to export data from.
 
 
-## Export configuration 
+
+### Export configuration 
 
 The object `exportConfigs` in `main.gs` is the section of this script in which you can specify the
 endpoints that you wish to export data from and where the outputs should be written.

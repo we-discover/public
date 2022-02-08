@@ -13,7 +13,7 @@
 */
 
 /**
-     * Config structure for configuring data  be exported to given gsheets.
+     * Config structure for configuring data  be exported to given GSheets.
      * This export structure was suitable for the task for which this
      * script was originally developed but there's a lot of opportunity
      * for adapting and extending this.
@@ -153,7 +153,10 @@ function writeJsonToGsheet(outputSheetName, jsonResults){
   var spreadsheet = SpreadsheetApp.getActive();
   var outputSheet = spreadsheet.getSheetByName(outputSheetName);
   if (outputSheet === null) {
-    outputSheet = spreadsheet.insertSheet(outputSheetName, 99);
+    outputSheet = spreadsheet.insertSheet(
+      outputSheetName, 
+      spreadsheet.getSheets().length + 2
+    );
   }
   outputSheet.clear();
   Logger.log('Connected and cleared output sheet: ' + outputSheetName);
