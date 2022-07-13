@@ -1,7 +1,7 @@
 /************* USER CONFIGS *********************************************************************************************/
 
 // URL of spreadsheet
-const SPREADSHEET_URL = "https://docs.google.com/spreadsheets/d/1G1qeSzTcJX_GeELnJNOLIj-3WennXawnLVhYEbOK2pQ/edit#gid=0";
+const SPREADSHEET_URL = "XXXXXX";
 
 // Number of days of data to include in export
 const REPORTING_WINDOW = 180;
