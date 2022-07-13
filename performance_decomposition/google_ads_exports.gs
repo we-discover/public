@@ -41,7 +41,7 @@ function main() {
 
     const sheet = getOrCreateSheet(spreadsheet, config.sheetName);
     getReportToSheet(query, sheet);
-    // sheet.hideSheet();
+    sheet.hideSheet();
 
     Logger.log(`Exported ${config.name}.`);
   }
