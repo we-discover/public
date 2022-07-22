@@ -15,6 +15,8 @@
 
 const decompositionSheetName = 'Performance Decomposition';
 
+const campaignStatsSheetName = 'Google Ads Import: Google Ads Campaign Stats';
+
 const controlRefs = {
   account: 'C4',
   campaignRuleType: 'C5',
@@ -27,14 +29,133 @@ const controlRefs = {
   comparisonPeriodEnd: 'I5'  
 }
 
-// Todo: Make currency dynamic
-const fmtCurrencyInt = '£#,##0';
-const fmtCurrencyDec = '£#,##0.00';
+const campaignStatsColumns = {
+  accountName: "C",
+  currencyCode: "D",
+}
+
+const currencySymbols = {
+  'AED': 'د.إ',
+  'AFN': '؋',
+  'ALL': 'Lek',
+  'ANG': 'ƒ',
+  'ARS': '$',
+  'AUD': '$',
+  'AWG': 'ƒ',
+  'AZN': '₼',
+  'BAM': 'KM',
+  'BBD': '$',
+  'BGN': 'лв',
+  'BMD': '$',
+  'BND': '$',
+  'BOB': '$b',
+  'BRL': 'R$',
+  'BSD': '$',
+  'BWP': 'P',
+  'BYN': 'Br',
+  'BZD': 'BZ$',
+  'CAD': '$',
+  'CHF': 'CHF',
+  'CLP': '$',
+  'CNY': '¥',
+  'COP': '$',
+  'CRC': '₡',
+  'CUP': '₱',
+  'CZK': 'Kč',
+  'DKK': 'kr',
+  'DOP': 'RD$',
+  'EGP': '£',
+  'EUR': '€',
+  'FJD': '$',
+  'FKP': '£',
+  'GBP': '£',
+  'GGP': '£',
+  'GHS': '¢',
+  'GIP': '£',
+  'GTQ': 'Q',
+  'GYD': '$',
+  'HKD': '$',
+  'HNL': 'L',
+  'HRK': 'kn',
+  'HUF': 'Ft',
+  'IDR': 'Rp',
+  'ILS': '₪',
+  'IMP': '£',
+  'INR': '₹',
+  'IRR': '﷼',
+  'ISK': 'kr',
+  'JEP': '£',
+  'JMD': 'J$',
+  'JPY': '¥',
+  'KGS': 'лв',
+  'KHR': '៛',
+  'KPW': '₩',
+  'KRW': '₩',
+  'KRW': '₩',
+  'KYD': '$',
+  'KZT': 'лв',
+  'LAK': '₭',
+  'LBP': '£',
+  'LKR': '₨',
+  'LRD': '$',
+  'MKD': 'ден',
+  'MNT': '₮',
+  'MNT': 'د.إ',
+  'MUR': '₨',
+  'MXN': '$',
+  'MYR': 'RM',
+  'MZN': 'MT',
+  'NAD': '$',
+  'NGN': '₦',
+  'NIO': 'C$',
+  'NOK': 'kr',
+  'NPR': '₨',
+  'NZD': '$',
+  'OMR': '﷼',
+  'PAB': 'B/.',
+  'PEN': 'S/.',
+  'PHP': '₱',
+  'PKR': '₨',
+  'PLN': 'zł',
+  'PYG': 'Gs',
+  'QAR': '﷼',
+  'RON': 'lei',
+  'RSD': 'Дин.',
+  'RUB': '₽',
+  'SAR': '﷼',
+  'SBD': '$',
+  'SCR': '₨',
+  'SEK': 'kr',
+  'SGD': '$',
+  'SHP': '£',
+  'SOS': 'S',
+  'SRD': '$',
+  'SVC': '$',
+  'SYP': '£',
+  'THB': '฿',
+  'TRY': '₺',
+  'TTD': 'TT$',
+  'TVD': '$',
+  'TWD': 'NT$',
+  'UAH': '₴',
+  'USD': '$',
+  'UYU': '$U',
+  'UZS': 'лв',
+  'VEF': 'Bs',
+  'VND': '₫',
+  'XCD': '$',
+  'YER': '﷼',
+  'ZAR': 'R',
+  'ZWD': 'Z$',
+};
+
+const currencySymbol = getCurrencySymbol();
+const fmtCurrencyInt = `${currencySymbol}#,##0`;
+const fmtCurrencyDec = `${currencySymbol}#,##0.00`;
 const fmtPercentageInt = '0%';
 const fmtPercentageDec = '0.0%';
 const fmtValueInt = '#,##0';
 const fmtValueDec = '#,##0.00';
-
 
 const displayRefs = {
   decompMetricHeader: 'C10',
@@ -67,13 +188,47 @@ const displayRefs = {
     'H19',
     'I19'
   ] 
-}
+};
 
-const dateFormat = 'yyyy-MM-dd'
+const dateFormat = 'yyyy-MM-dd';
 
 // Utility method for adding days to a date
 Date.prototype.addDays = function(days) {
     var date = new Date(this.valueOf());
     date.setDate(date.getDate() + days);
     return date;
+};
+
+/**
+ * Get an array of row values for a given column in a given sheet
+ * @param {SpreadsheetApp.Sheet} sheet object of sheet to search in
+ * @param {String} column column to search in, in A1 notation - i.e. A, B, C, AA, AB, etc
+ * @return {Array} Flat array of row values
+ */
+function getRowValues(sheet, column) {
+  return sheet.getRange(`${column}:${column}`)
+              .getValues()
+              .filter(
+                (row) => row.length > 0
+                )
+              .map(
+                (row) => row[0]
+              );
+}
+
+/**
+ * Get the currency symbol for the account being decomposed
+ * @return {String} Currency symbol for account
+*/
+function getCurrencySymbol() {
+  const spreadsheet = SpreadsheetApp.getActive();
+  const accountToDecompose = spreadsheet.getSheetByName(decompositionSheetName).getRange(controlRefs.account).getValue();
+
+  const campaignStatsSheet = spreadsheet.getSheetByName(campaignStatsSheetName);
+  const accountsInSheet = getRowValues(campaignStatsSheet, campaignStatsColumns.accountName);
+  const currenciesInSheet = getRowValues(campaignStatsSheet, campaignStatsColumns.currencyCode);
+  
+  const accountCurrencyCode = currenciesInSheet[accountsInSheet.indexOf(accountToDecompose)];
+
+  return currencySymbols[accountCurrencyCode];
 }
