@@ -23,7 +23,7 @@ const ACCOUNTS_TO_EXCLUDE = [];
 
 /************* SCRIPT ENTRY POINT ***********************************************************************************************************/
 
-function main() {
+function main2() {
   const isMcc = typeof AdsManagerApp == "undefined" ? false : true;
   
   const reportStart = getDateXDaysAgo(REPORTING_WINDOW);
@@ -190,7 +190,6 @@ Please ensure IDs are entered as a comma-separated list of the form XXX-XXX-XXXX
 }
 
 // Get the column headers from a raw GAQL query as an array
-// TODO: Tests
 function getHeaders(query) {
   const formattedQuery = query.replace(/\s+/g, " ").replace(/^ /, "").replace(/ $/, "");
   const headerString = /^SELECT (.*) FROM.*$/g.exec(formattedQuery)[1];
@@ -199,7 +198,6 @@ function getHeaders(query) {
 }
 
 // Initialise form of report as {sheetName1: {header1: [], header2: [], ...}, ...}
-// TODO: Tests
 function initialiseReports(queriesConfig) {
   const reportsBySheetName = {};
   
@@ -216,7 +214,6 @@ function initialiseReports(queriesConfig) {
 
 // Get IDs of accounts which are in MCC but not in accountsToExclude
 // For use with .withIds() function when selecting child accounts
-// TODO: Tests
 function changeAccountExclusionToInclusion(accountsToExclude) {
   const accountsToInclude = [];
 
