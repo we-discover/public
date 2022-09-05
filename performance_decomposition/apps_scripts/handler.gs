@@ -101,9 +101,11 @@ class DecompHandler {
         .getRange(displayRefs.independentMetricHeaders[i])
         .setValue(this.formula.independentVars[i].metric);
 
+      let requiredFormat = metricFormats[this.formula.independentVars[i].metric];
+
       this.sheet
         .getRange(displayRefs.independentMetricValues[i])
-        .setNumberFormat(this.formula.independentVars[i].format);
+        .setNumberFormat(requiredFormat);
 
       this.sheet
         .getRange(displayRefs.inverseIndicators[i])

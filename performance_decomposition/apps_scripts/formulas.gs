@@ -19,27 +19,22 @@ const decompFormulas = [
   {
     dependentVar: {
       metric: 'Conversions',
-      format: fmtValueInt
     },
     independentVars: [
       {
-        metric: 'Est. Searches', 
-        format: fmtValueInt, 
+        metric: 'Est. Searches',
         inverse: false
       }, 
       {
         metric: 'Impression Share', 
-        format: fmtPercentageInt, 
         inverse: false
       }, 
       {
         metric: 'CTR', 
-        format: fmtPercentageDec, 
         inverse: false
       }, 
       {
         metric: 'CVR', 
-        format: fmtPercentageDec, 
         inverse: false
       }
     ]
@@ -48,32 +43,26 @@ const decompFormulas = [
   {
     dependentVar: {
       metric: 'Conversion Value',
-      format: fmtCurrencyDec
     },
     independentVars: [
       {
         metric: 'Est. Searches', 
-        format: fmtValueInt, 
         inverse: false
       }, 
       {
         metric: 'Impression Share', 
-        format: fmtPercentageInt, 
         inverse: false
       }, 
       {
         metric: 'CTR', 
-        format: fmtPercentageDec, 
         inverse: false
       }, 
       {
         metric: 'CVR', 
-        format: fmtPercentageDec, 
         inverse: false
       }, 
       {
         metric: 'RPC', 
-        format: fmtCurrencyDec, 
         inverse: false
       }
     ]
@@ -82,32 +71,26 @@ const decompFormulas = [
   {
     dependentVar: {
       metric: 'CPA',
-      format: fmtCurrencyDec
     },
     independentVars: [
       {
         metric: 'Cost', 
-        format: fmtCurrencyInt, 
         inverse: false
       },    
       {
         metric: 'Est. Searches', 
-        format: fmtValueInt, 
         inverse: true
       }, 
       {
         metric: 'Impression Share', 
-        format: fmtPercentageInt, 
         inverse: true
       }, 
       {
         metric: 'CTR', 
-        format: fmtPercentageDec, 
         inverse: true
       }, 
       {
         metric: 'CVR', 
-        format: fmtPercentageDec, 
         inverse: true
       }
 
@@ -117,37 +100,30 @@ const decompFormulas = [
   {
     dependentVar: {
       metric: 'ROAS',
-      format: fmtPercentageDec
     },
     independentVars: [
       {
         metric: 'Est. Searches', 
-        format: fmtValueInt, 
         inverse: false
       }, 
       {
         metric: 'Impression Share', 
-        format: fmtPercentageInt, 
         inverse: false
       }, 
       {
         metric: 'CTR', 
-        format: fmtPercentageDec, 
         inverse: false
       }, 
       {
         metric: 'CVR', 
-        format: fmtPercentageDec, 
         inverse: false
       },
       {
         metric: 'RPC', 
-        format: fmtCurrencyDec, 
         inverse: false
       },
       {
         metric: 'Cost', 
-        format: fmtCurrencyInt, 
         inverse: true
       },    
     ]
