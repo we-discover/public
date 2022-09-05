@@ -30,6 +30,15 @@ const controlRefs = {
   comparisonPeriodEnd: 'I6'  
 }
 
+const currencySymbol = getCurrencySymbol();
+const fmtCurrencyInt = `${currencySymbol}#,##0`;
+const fmtCurrencyDec = `${currencySymbol}#,##0.00`;
+
+const fmtPercentageInt = '0%';
+const fmtPercentageDec = '0.0%';
+const fmtValueInt = '#,##0';
+const fmtValueDec = '#,##0.00';
+
 const metricFormats = {
   'Cost': fmtCurrencyInt,
   'Est. Searches': fmtValueInt,
@@ -44,16 +53,6 @@ const metricFormats = {
   'ROAS': fmtPercentageInt,
   'CPA': fmtCurrencyDec
 };
-
-const currencySymbol = getCurrencySymbol();
-const fmtCurrencyInt = `${currencySymbol}#,##0`;
-const fmtCurrencyDec = `${currencySymbol}#,##0.00`;
-
-const fmtPercentageInt = '0%';
-const fmtPercentageDec = '0.0%';
-const fmtValueInt = '#,##0';
-const fmtValueDec = '#,##0.00';
-
 
 const displayRefs = {
   performanceMetricHeaders: [

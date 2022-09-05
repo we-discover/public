@@ -15,7 +15,6 @@
 // All formulas are linear, where divisions are made by setting inverse=True.
 // Formulas are calculated in the same order as they appear under independentVars.
 const decompFormulas = [
-  
   {
     dependentVar: {
       metric: 'Conversions',

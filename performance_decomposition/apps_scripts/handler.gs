@@ -21,19 +21,6 @@ class DecompHandler {
 
     this.workbook.toast("Running background process.", "Processing...", 2);
     Utilities.sleep(1000);
-    
-    this.decompMetric = this.sheet.getRange(controlRefs.decompMetric).getValue();
-    if (this.decompMetric === "" & !resetMode) {
-      throw new Error('Please choose a Decomposition Metric and try again.')
-    }
-
-    try {
-      let matches = decompFormulas.filter(f => {return f.dependentVar.metric === this.decompMetric});
-      this.formula = matches[0]
-    } catch(e) {
-      throw new Error(this.decompMetric + ' is not supported.')
-    }
-    console.log('Handler instantiated for ' + this.decompMetric);
   }
 
   /**
@@ -185,7 +172,7 @@ class DecompHandler {
   handlePerformanceMetricSelection(updatedRef) {
     var selectedMetric = this.sheet.getRange(updatedRef).getValue();
     var metricValueRefs = displayRefs.performanceMetricValues[
-      displayRefs.performanceMetricHeaders.indexOf(updatedRaef)
+      displayRefs.performanceMetricHeaders.indexOf(updatedRef)
     ];
     var requiredFormat = metricFormats[selectedMetric];
     this.sheet.getRange(metricValueRefs).setNumberFormat(requiredFormat);
@@ -195,21 +182,33 @@ class DecompHandler {
    * Set all relevant values in the main sheet based on selected controls
   */
   updateMetricReferences() {
+    var decompMetric = this.sheet.getRange(controlRefs.decompMetric).getValue();
+    if (decompMetric === "") {
+      throw new Error('Please choose a Decomposition Metric and try again.')
+    }
+
+    try {
+      let matches = decompFormulas.filter(f => {return f.dependentVar.metric === decompMetric});
+      var formula = matches[0];
+    } catch(e) {
+      throw new Error(decompMetric + ' is not supported.')
+    }
+
     let decompMetricHeaderRange = this.sheet.getRange(displayRefs.decompMetricHeader);
-    decompMetricHeaderRange.setValue(this.decompMetric);
+    decompMetricHeaderRange.setValue(decompMetric);
 
     for (let i = 0; i < displayRefs.decompMetricValues.length; i++) {
       this.sheet
         .getRange(displayRefs.decompMetricValues[i])
-        .setNumberFormat(this.formula.dependentVar.format);
+        .setNumberFormat(metricFormats[decompMetric]);
     }
 
-    for (let i = 0; i < this.formula.independentVars.length; i++) {
+    for (let i = 0; i < formula.independentVars.length; i++) {
       this.sheet
         .getRange(displayRefs.independentMetricHeaders[i])
-        .setValue(this.formula.independentVars[i].metric);
+        .setValue(formula.independentVars[i].metric);
 
-      let requiredFormat = metricFormats[this.formula.independentVars[i].metric];
+      let requiredFormat = metricFormats[formula.independentVars[i].metric];
 
       this.sheet
         .getRange(displayRefs.independentMetricValues[i])
@@ -217,7 +216,7 @@ class DecompHandler {
 
       this.sheet
         .getRange(displayRefs.inverseIndicators[i])
-        .setValue(this.formula.independentVars[i].inverse);
+        .setValue(formula.independentVars[i].inverse);
     }
   }
 
