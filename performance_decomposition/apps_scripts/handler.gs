@@ -15,12 +15,15 @@
 
 class DecompHandler {
 
-  constructor() {
+  constructor(resetMode) {
     this.workbook = SpreadsheetApp.getActiveSpreadsheet();
     this.sheet = this.workbook.getSheetByName(decompositionSheetName);
+
+    this.workbook.toast("Running background process.", "Processing...", 2);
+    Utilities.sleep(1000);
     
     this.decompMetric = this.sheet.getRange(controlRefs.decompMetric).getValue();
-    if (this.decompMetric === "") {
+    if (this.decompMetric === "" & !resetMode) {
       throw new Error('Please choose a Decomposition Metric and try again.')
     }
 
@@ -34,18 +37,106 @@ class DecompHandler {
   }
 
   /**
-   * Set a default date range on initial and comparison period controls
-   * @return {null} No return value
+   * Calculate the comparison period multiplier. 
+   * 1 = Previous, 2 = lagged 1, 3 = lagged 2.
   */
-  _setDefaultDateRange() {
-      // Set default date window (-7, -14 days)
-      let today = new Date();
-      
-      const cEnd = today.addDays(-1);
-      const cStart = today.addDays(-7);
-      const iEnd = today.addDays(-8);
-      const iStart = today.addDays(-14);
+  _getComparisonPeriodMultiplier(comparisonType) {
+    var multiplier = 1;
+    var re = new RegExp('Previous Period \\(-(.*)\\)');
+    var matches = re.exec(comparisonType);
+    if (matches !== null) {
+      multiplier += parseInt(matches[1]);
+    }
+    return multiplier;
+  }
 
+  /**
+   * Calculate the length of the period selected. Equal length periods 
+   * applied for comparison periods, except for months.
+  */
+  _getPeriodLength(periodType) {
+    if (periodType.includes('Week')) {
+      return 7;
+    }
+
+    const today = new Date();
+    if (periodType === 'This Month') {
+      return new Date(
+        today.getFullYear(),
+        today.getMonth() + 1,
+        0
+      ).getDate();
+    }
+    if (periodType === 'Last Month') {
+      return new Date(
+        today.getFullYear(),
+        today.getMonth() - 1,
+        0
+      ).getDate();
+    }
+    
+    var re = new RegExp('Last \((.*)\) Days');
+    var matches = re.exec(periodType);
+    return parseInt(matches[1]);
+  }
+
+  /**
+   * Set custom period type
+  */
+  setPeriodTypeCustom() {
+    let periodType = this.sheet.getRange(controlRefs.periodType).getValue();
+    if (periodType !== 'Custom') {
+      this.sheet.getRange(controlRefs.periodType).setValue('Custom');
+    }
+  }
+
+  /**
+   * Set a default date range on initial and comparison period controls
+  */
+  setDefaultDateRange() {
+      let periodType = this.sheet.getRange(controlRefs.periodType).getValue();
+      let comparisonType = this.sheet.getRange(controlRefs.comparisonType).getValue();
+    
+      if (periodType === 'Custom') {
+        return null
+      }
+
+      // Define the period length and comparison type period multiplier
+      let periodLength = this._getPeriodLength(periodType);
+      let comparisonMultiplier = this._getComparisonPeriodMultiplier(comparisonType);
+
+      // Define the end of the comparison period
+      let cEnd = new Date();
+      if (periodType === 'Last Week') { // End of last week
+        cEnd = cEnd.addDays(-cEnd.getDay());
+      } else if (periodType === 'This Week') { // End of this week
+        cEnd = cEnd.addDays(-cEnd.getDay() + 7);
+      } else if (periodType === 'Last Month') { // End of last month
+        cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), 1).addDays(-1);
+      } else if (periodType === 'This Month') { // End of this month
+        cEnd = new Date(cEnd.getFullYear(), cEnd.getMonth(), periodLength);
+      } else { // Yesterday
+        cEnd = cEnd.addDays(-1);
+      }
+
+      var cStart = cEnd.addDays(-(periodLength - 1));
+      var iEnd = cEnd.addDays(-comparisonMultiplier * periodLength);
+      var iStart = cEnd.addDays(-(((comparisonMultiplier + 1) * periodLength)-1)); 
+
+      // Handle month varied length exceptions
+      if (periodType.includes('Month')) {
+        iStart = iStart.addDays(1-iStart.getDate());
+        cStart = cStart.addDays(1-cStart.getDate());
+
+        var iMonthDays = new Date(
+          iStart.getFullYear(),
+          iStart.getMonth() + 1,
+          0
+        ).addDays(-1).getDate();
+        iEnd = iStart.addDays(iMonthDays);
+      } 
+
+      // Set outputs in sheet
       this.sheet.getRange(controlRefs.comparisonPeriodEnd)
         .setValue(Utilities.formatDate(cEnd, "GMT", dateFormat));
       this.sheet.getRange(controlRefs.comparisonPeriodStart)
@@ -53,24 +144,30 @@ class DecompHandler {
       this.sheet.getRange(controlRefs.initialPeriodEnd)
         .setValue(Utilities.formatDate(iEnd, "GMT", dateFormat));
       this.sheet.getRange(controlRefs.initialPeriodStart)
-        .setValue(Utilities.formatDate(iStart, "GMT", dateFormat));    
+        .setValue(Utilities.formatDate(iStart, "GMT", dateFormat));          
   }
 
   /**
    * Reset controls and relevant calculations on the sheet.
    * @param {boolean} valuesOnly Whether to clear controls or just values.
-   * @return {null} No return value
   */
   resetSheet(valuesOnly) {
     if (!valuesOnly) {
       // Clear control values
       for (const [key, ref] of Object.entries(controlRefs)) {
+        // Never clear date controls as it's poor UX
+        if (ref.includes('G') | ref.includes('I')) {
+          continue; 
+        }
         this.sheet.getRange(ref).clearContent();
       }
-      this._setDefaultDateRange();
+          // Clear performance metric headers
+      for (let i = 0; i < displayRefs.performanceMetricHeaders.length; i++) {
+        this.sheet.getRange(displayRefs.performanceMetricHeaders[i]).clearContent();
+      }
     }
 
-    // Clear performance metric headers
+    // Clear decomp metric headers
     for (let i = 0; i < displayRefs.independentMetricHeaders.length; i++) {
       this.sheet.getRange(displayRefs.independentMetricHeaders[i]).clearContent();
     }
@@ -83,8 +180,19 @@ class DecompHandler {
   }
 
   /**
+   * Set relevant cell formatting for performance metric values
+  */
+  handlePerformanceMetricSelection(updatedRef) {
+    var selectedMetric = this.sheet.getRange(updatedRef).getValue();
+    var metricValueRefs = displayRefs.performanceMetricValues[
+      displayRefs.performanceMetricHeaders.indexOf(updatedRaef)
+    ];
+    var requiredFormat = metricFormats[selectedMetric];
+    this.sheet.getRange(metricValueRefs).setNumberFormat(requiredFormat);
+  }
+
+  /**
    * Set all relevant values in the main sheet based on selected controls
-   * @return {null} No return value
   */
   updateMetricReferences() {
     let decompMetricHeaderRange = this.sheet.getRange(displayRefs.decompMetricHeader);
