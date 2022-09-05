@@ -23,7 +23,7 @@ const ACCOUNTS_TO_EXCLUDE = [];
 
 /************* SCRIPT ENTRY POINT ***********************************************************************************************************/
 
-function main2() {
+function main() {
   const isMcc = typeof AdsManagerApp == "undefined" ? false : true;
   
   const reportStart = getDateXDaysAgo(REPORTING_WINDOW);
@@ -245,7 +245,9 @@ const BASE_METRICS_PERFORMANCE_QUERY_TEMPLATE = `
     metrics.cost_micros, 
     metrics.search_impression_share,
     metrics.impressions, 
-    metrics.clicks
+    metrics.clicks,
+    metrics.conversions,
+    metrics.conversions_value
   FROM 
     campaign 
   WHERE 
