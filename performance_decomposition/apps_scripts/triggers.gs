@@ -17,8 +17,8 @@ function onEdit(e) {
 
   var changesMade = false;
 
-  // Reset calculations on metric change
-  if (e.range.getA1Notation() === controlRefs.decompMetric) {
+  // Reset calculations on metric change or account selection
+  if ([controlRefs.decompMetric, controlRefs.account].includes(e.range.getA1Notation())) {
     var handler = new DecompHandler();
     handler.resetSheet(true);
     changesMade = true;
