@@ -1,3 +1,14 @@
+/*
+    Name:        WeDiscover - Data Export for Performance Decomposition, Google Ads Script
+    Description: A script to build export data for use with WeDiscover's
+                 Performance Decomposition tool
+    License:     https://github.com/we-discover/public/blob/master/LICENSE
+    Version:     1.0.0
+    Released:    2022-09-08
+    Contact:     scripts@we-discover.com
+*/
+
+
 /************* GENERAL CONFIGS **************************************************************************************************************/
 
 // URL of spreadsheet
