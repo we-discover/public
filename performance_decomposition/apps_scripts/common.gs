@@ -30,6 +30,9 @@ const controlRefs = {
   comparisonPeriodEnd: 'I6'  
 }
 
+// Do not trigger a toast if these cells are edited 
+const doNotToastRefs = ['G5', 'G6', 'I5', 'I6'];
+
 const currencySymbol = getCurrencySymbol();
 const fmtCurrencyInt = `${currencySymbol}#,##0`;
 const fmtCurrencyDec = `${currencySymbol}#,##0.00`;
