@@ -15,7 +15,7 @@
 
 class DecompHandler {
 
-  constructor(resetMode) {
+  constructor() {
     this.workbook = SpreadsheetApp.getActiveSpreadsheet();
     this.sheet = this.workbook.getSheetByName(decompositionSheetName);
 
