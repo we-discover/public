@@ -47,7 +47,8 @@ function onEdit(e) {
     controlRefs.comparisonPeriodEnd,
     controlRefs.comparisonPeriodStart
   ]
-  if (dateRangeRefs.includes(e.range.getA1Notation())) {
+
+if (dateRangeRefs.includes(e.range.getA1Notation()) && !doNotToastRefs.includes(e.range.getA1Notation())) {
     let handler = new DecompHandler();
     handler.setPeriodTypeCustom();
     changesMade = true;
