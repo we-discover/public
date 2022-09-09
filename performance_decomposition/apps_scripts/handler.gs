@@ -28,9 +28,9 @@ class DecompHandler {
    * 1 = Previous, 2 = lagged 1, 3 = lagged 2.
   */
   _getComparisonPeriodMultiplier(comparisonType) {
-    var multiplier = 1;
-    var re = new RegExp('Previous Period \\(-(.*)\\)');
-    var matches = re.exec(comparisonType);
+    let multiplier = 1;
+    let re = new RegExp('Previous Period \\(-(.*)\\)');
+    let matches = re.exec(comparisonType);
     if (matches !== null) {
       multiplier += parseInt(matches[1]);
     }
@@ -62,8 +62,8 @@ class DecompHandler {
       ).getDate();
     }
     
-    var re = new RegExp('Last \((.*)\) Days');
-    var matches = re.exec(periodType);
+    let re = new RegExp('Last \((.*)\) Days');
+    let matches = re.exec(periodType);
     return parseInt(matches[1]);
   }
 
@@ -106,16 +106,16 @@ class DecompHandler {
         cEnd = cEnd.addDays(-1);
       }
 
-      var cStart = cEnd.addDays(-(periodLength - 1));
-      var iEnd = cEnd.addDays(-comparisonMultiplier * periodLength);
-      var iStart = cEnd.addDays(-(((comparisonMultiplier + 1) * periodLength)-1)); 
+      let cStart = cEnd.addDays(-(periodLength - 1));
+      let iEnd = cEnd.addDays(-comparisonMultiplier * periodLength);
+      let iStart = cEnd.addDays(-(((comparisonMultiplier + 1) * periodLength)-1)); 
 
       // Handle month varied length exceptions
       if (periodType.includes('Month')) {
         iStart = iStart.addDays(1-iStart.getDate());
         cStart = cStart.addDays(1-cStart.getDate());
 
-        var iMonthDays = new Date(
+        let iMonthDays = new Date(
           iStart.getFullYear(),
           iStart.getMonth() + 1,
           0
@@ -170,11 +170,11 @@ class DecompHandler {
    * Set relevant cell formatting for performance metric values
   */
   handlePerformanceMetricSelection(updatedRef) {
-    var selectedMetric = this.sheet.getRange(updatedRef).getValue();
-    var metricValueRefs = displayRefs.performanceMetricValues[
+    let selectedMetric = this.sheet.getRange(updatedRef).getValue();
+    let metricValueRefs = displayRefs.performanceMetricValues[
       displayRefs.performanceMetricHeaders.indexOf(updatedRef)
     ];
-    var requiredFormat = metricFormats[selectedMetric];
+    let requiredFormat = metricFormats[selectedMetric];
     this.sheet.getRange(metricValueRefs).setNumberFormat(requiredFormat);
   }
 
@@ -182,14 +182,14 @@ class DecompHandler {
    * Set all relevant values in the main sheet based on selected controls
   */
   updateMetricReferences() {
-    var decompMetric = this.sheet.getRange(controlRefs.decompMetric).getValue();
+    let decompMetric = this.sheet.getRange(controlRefs.decompMetric).getValue();
     if (decompMetric === "") {
       throw new Error('Please choose a Decomposition Metric and try again.')
     }
 
     try {
       let matches = decompFormulas.filter(f => {return f.dependentVar.metric === decompMetric});
-      var formula = matches[0];
+      let formula = matches[0];
     } catch(e) {
       throw new Error(decompMetric + ' is not supported.')
     }
