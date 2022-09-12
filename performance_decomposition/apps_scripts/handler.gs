@@ -187,9 +187,11 @@ class DecompHandler {
       throw new Error('Please choose a Decomposition Metric and try again.')
     }
 
+    let formula = {};
+
     try {
       let matches = decompFormulas.filter(f => {return f.dependentVar.metric === decompMetric});
-      let formula = matches[0];
+      formula = matches[0];
     } catch(e) {
       throw new Error(decompMetric + ' is not supported.')
     }
