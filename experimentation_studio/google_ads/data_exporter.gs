@@ -389,7 +389,7 @@ function collectDataForTestConfigs(testConfigurations, gsheetId) {
       continue;
     }
 
-   try {
+     try {
       config.entities = getEntityIdsForTest(config);
       // Skip if no entities identified for test in current account
       if (Object.keys(config.entities).length === 0) {
@@ -397,25 +397,21 @@ function collectDataForTestConfigs(testConfigurations, gsheetId) {
         processedConfigurations.push(config);
         continue;
       }
-   } catch (anyErrors) {
-     Logger.log(anyErrors);
-     Logger.log('Info: Failed to identify entities for:' + accountTestMessage);
-     continue;
-   }
+    } catch (anyErrors) {
+      Logger.log(anyErrors);
+      Logger.log('Info: Failed to identify entities for:' + accountTestMessage);
+      continue;
+    }
 
-   try {
+    try {
       var variantQueries = buildQueriesForVariants(config);
       var exportData = queryAndAggregateData(variantQueries);
-   } catch (anyErrors) {
-     Logger.log(anyErrors);
-     Logger.log('Info: Failed to load data for:' + accountTestMessage);
-     continue;
-   }
+    } catch (anyErrors) {
+      Logger.log(anyErrors);
+      Logger.log('Info: Failed to load data for:' + accountTestMessage);
+      continue;
+    }
 
-    config.data = exportData;
-    config.processed = true;
-    processedConfigurations.push(config);
-  }
 
   return processedConfigurations;
 }
