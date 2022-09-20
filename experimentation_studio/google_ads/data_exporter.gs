@@ -412,6 +412,10 @@ function collectDataForTestConfigs(testConfigurations, gsheetId) {
       continue;
     }
 
+    config.data = exportData;
+    config.processed = true;
+    processedConfigurations.push(config);
+  }
 
   return processedConfigurations;
 }
