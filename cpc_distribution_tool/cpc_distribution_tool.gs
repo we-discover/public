@@ -129,7 +129,7 @@ function main() {
 
   // Copy the CPC distribution tool template spreadsheet to Drive of user
   // Rename the copied template spreadsheet to include the account name
-  const templateFileId = "1FrgdmXmSbgOWAsQCHRBZkN-NMkEBJPZ8Qf1GgjOZeuQ";
+  const templateFileId = "1sOei4D5IDkhLAsFAzkhOhFIFZGZQo4LqnAzn-jyidtU";
   const ssFile = DriveApp.getFileById(templateFileId).makeCopy(title);
   const spreadsheetUrl = ssFile.getUrl();
 
