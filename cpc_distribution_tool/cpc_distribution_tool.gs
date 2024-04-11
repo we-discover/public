@@ -15,7 +15,7 @@
                  
     License:        https://github.com/we-discover/public/blob/master/LICENSE
     Version:        1.0.0
-    Released:       2024-04-09
+    Released:       2024-04-11
     Author:         Nathan Ifill (@nathanifill)
     Contact:        scripts@we-discover.com
 */
@@ -123,7 +123,7 @@ function main() {
       whereStatement +
       " AND segments.date DURING " +
       lookbackPeriod +
-      " ORDER BY metrics.cost_micros DESC LIMIT 50000"
+      " ORDER BY metrics.cost_micros DESC"
   );
 
   const rows = report.rows();
@@ -142,6 +142,16 @@ function main() {
 
     queries[row["search_term_view.search_term"]] = metrics;
   }
+  
+  const numberOfQueries = Object.values(queries).length;
+  
+  // If number of queries too big for report, throw error
+  if (numberOfQueries > 10000) {
+    const errorMsg =  "The number of search queries is too large for the report. Please select " +
+                      "a smaller lookback period and/or filter your selection with the " +
+                      "campaign name filters.";
+    throw new Error(errorMsg);
+  }
 
   // Copy the CPC distribution tool template spreadsheet to Drive of user
   // Rename the copied template spreadsheet to include the account name
@@ -154,8 +164,6 @@ function main() {
   const dataSheet = ss.getSheetByName("Data");
 
   if (!dataSheet) throw error;
-
-  const numberOfQueries = Object.values(queries).length;
 
   // Spit all of the metrics into the "Data" sheet of the CPC distribution tool template spreadsheet
   const dataRange = dataSheet.getRange(2, 1, numberOfQueries, 6);
