@@ -123,7 +123,7 @@ function main() {
       whereStatement +
       " AND segments.date DURING " +
       lookbackPeriod +
-      " ORDER BY metrics.cost_micros DESC LIMIT 10000"
+      " ORDER BY metrics.cost_micros DESC LIMIT 50000"
   );
 
   const rows = report.rows();
