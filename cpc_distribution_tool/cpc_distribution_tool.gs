@@ -15,7 +15,7 @@
                  
     License:        https://github.com/we-discover/public/blob/master/LICENSE
     Version:        1.0.0
-    Released:       2023-12-07
+    Released:       2024-04-11
     Author:         Nathan Ifill (@nathanifill)
     Contact:        scripts@we-discover.com
 */
@@ -36,6 +36,8 @@ let lookbackPeriod = "";
 // at campaigns with either 'RLSA' OR 'Competitors' in their name. To include all
 // campaigns, simply leave it as [""].
 //
+// Please note that campaign name filters cannot contain punctuation.
+//
 // Example: const campaignNameContains = ["Brand"];
 
 const campaignNameContains = [""];
@@ -47,6 +49,8 @@ const campaignNameContains = [""];
 // with 'PMax' in the name, while ["PMax", "Brand"] would ignore any campaigns with
 // either 'PMax' or 'Brand' in the name. If you don't want to exclude any campaigns,
 // just leave it as [""].
+//
+// Please note that campaign name filters cannot contain punctuation.
 //
 // Example: const campaignNameDoesNotContain = ["Generic"];
 
@@ -73,6 +77,18 @@ const title = accountName + " (" + accountId + ") - WeDiscover CPC Distribution 
 let emailLog = "";
 
 function main() {
+  // RE2 syntax that can't appear in campaign filters
+  const regex = /[[:punct:]]|\.|\[|\]|\^|\:|\{|\}|\?|\,|\*|\-|\=|\+|\(|\)|\'|\"|\#|\@|\%|\$|\<|\!|\&/g;
+  
+  // Concatenate name filter arrays
+  const allFilterArr = campaignNameContains.concat(campaignNameDoesNotContain);
+  
+  allFilterArr.forEach(element => { 
+    if (element.search(regex) >= 0) {
+      throw new Error("Campaign name filters cannot contain punctuation. Please remove this punctuation and try again.");
+    }
+  })
+  
   const allowedDateRanges = ["TODAY", "YESTERDAY", "LAST_7_DAYS", "THIS_MONTH", "LAST_MONTH", "LAST_14_DAYS", "LAST_30_DAYS"];
 
   // Set lookback period to LAST_30_DAYS if it's not already one of the supported options
@@ -107,7 +123,7 @@ function main() {
       whereStatement +
       " AND segments.date DURING " +
       lookbackPeriod +
-      " ORDER BY metrics.cost_micros DESC LIMIT 10000"
+      " ORDER BY metrics.cost_micros DESC"
   );
 
   const rows = report.rows();
@@ -126,6 +142,16 @@ function main() {
 
     queries[row["search_term_view.search_term"]] = metrics;
   }
+  
+  const numberOfQueries = Object.values(queries).length;
+  
+  // If number of queries too big for report, throw error
+  if (numberOfQueries > 10000) {
+    const errorMsg =  "The number of search queries is too large for the report. Please select " +
+                      "a smaller lookback period and/or filter your selection with the " +
+                      "campaign name filters.";
+    throw new Error(errorMsg);
+  }
 
   // Copy the CPC distribution tool template spreadsheet to Drive of user
   // Rename the copied template spreadsheet to include the account name
@@ -138,8 +164,6 @@ function main() {
   const dataSheet = ss.getSheetByName("Data");
 
   if (!dataSheet) throw error;
-
-  const numberOfQueries = Object.values(queries).length;
 
   // Spit all of the metrics into the "Data" sheet of the CPC distribution tool template spreadsheet
   const dataRange = dataSheet.getRange(2, 1, numberOfQueries, 6);
