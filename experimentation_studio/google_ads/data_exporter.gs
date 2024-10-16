@@ -4,7 +4,7 @@
                  templated Google Sheet in order to perform statistical evaluations of
                  D&E tests or those configured with labelled Campaigns, AdGroups or Ads.
     License:     https://github.com/we-discover/public/blob/master/LICENSE
-    Version:     1.0.1
+    Version:     1.1.1
     Released:    2021-07-31
     Contact:     scripts@we-discover.com
 */
@@ -219,7 +219,7 @@ function getEntityIdsForTest(config) {
 
   if (config.config_type === 'prepost') {
     var labelIterator = AdsApp.labels()
-      .withCondition("Name = '" + config.mvt_label + "'")
+      .withCondition("label.name = '" + config.mvt_label + "'")
       .get();
 
     if (labelIterator.totalNumEntities() === 1) {
@@ -239,8 +239,8 @@ function getEntityIdsForTest(config) {
 
   if (config.config_type === 'experiment') {
     var experimentIterator = AdsApp.campaigns()
-      .withCondition("Name CONTAINS_IGNORE_CASE '" + config.mvt_label + "'")
-      .withCondition("CampaignExperimentType = EXPERIMENT")
+      .withCondition("label.name REGEXP_MATCH '(?i).*" + config.mvt_label + ".*'")
+      .withCondition("campaign.experiment_type = EXPERIMENT")
       .get();
 
     if (experimentIterator.totalNumEntities() > 0) {
@@ -264,25 +264,25 @@ function getEntityIdsForTest(config) {
 function getApplicableReportingValues(config) {
 
   // Defaults on all tests tests
-  var reportType = 'CAMPAIGN_PERFORMANCE_REPORT';
-  var entityIdName = 'CampaignId';
+  var reportType = 'campaign';
+  var entityIdName = 'campaign.id';
 
   if (RegExp('^(label|prepost)$').test(config.config_type)) {
 
     if (config.label_type === 'adGroups') {
-      reportType = 'ADGROUP_PERFORMANCE_REPORT';
-      entityIdName = 'AdGroupId';
+      reportType = 'ad_group';
+      entityIdName = 'ad_group.id';
     }
     if (config.label_type === 'ads') {
-      reportType = 'AD_PERFORMANCE_REPORT';
-      entityIdName = 'Id';
+      reportType = 'ad_group_ad';
+      entityIdName = 'ad_group_ad.ad.id';
     }
   }
   return [reportType, entityIdName];
 }
 
 
-// Generate AWQL queries to pull data for each variant
+// Generate GAQL queries to pull data for each variant
 function buildQueriesForVariants(config) {
 
   var [reportType, entityIdName] = getApplicableReportingValues(config);
@@ -294,29 +294,29 @@ function buildQueriesForVariants(config) {
     var variantId = variantIds[i];
     var entityIds = config.entities[variantId];
 
-    var dateCondition = config.start_date + "," + config.end_date;
+    var dateCondition = config.start_date + " AND " + config.end_date;
     if (config.config_type === 'prepost' && variantId === 'pre') {
       dateCondition = config.pre_start_date + "," + config.pre_end_date;
     }
     if (config.config_type === 'prepost' && variantId === 'post') {
-      dateCondition = config.post_start_date + "," + config.post_end_date;
+      dateCondition = config.post_start_date + " AND " + config.post_end_date;
     }
 
     variantQueries[variantId] = (" \
       SELECT \
-          CustomerDescriptiveName \
-        , Date \
-        , Cost \
-        , Impressions \
-        , Clicks \
-        , Conversions \
-        , ConversionValue \
+          customer.descriptive_name \
+        , segments.date \
+        , metrics.cost_micros \
+        , metrics.impressions \
+        , metrics.clicks \
+        , metrics.conversions \
+        , metrics.conversions_value \
       FROM \
         " + reportType + " \
       WHERE \
-        " + entityIdName + " IN [" + entityIds.join(',') + "] \
-        AND Impressions > 0 \
-      DURING " +
+        " + entityIdName + " IN (" + entityIds.join(',') + ") \
+        AND metrics.impressions > 0 \
+        AND segments.date BETWEEN " +
         " " + dateCondition
     ).replace(/ +(?= )/g, '')
   }
@@ -325,15 +325,15 @@ function buildQueriesForVariants(config) {
 }
 
 
-// Runs AWQL query and aggregates data on a daily variant level
-function queryAndAggregateData(awqlQueries) {
+// Runs GAQL query and aggregates data on a daily variant level
+function queryAndAggregateData(gaqlQueries) {
   var dataObj = {};
 
-  var variantIds = Object.keys(awqlQueries);
+  var variantIds = Object.keys(gaqlQueries);
 
   for (var i = 0; i < variantIds.length; i++) {
     var varId = variantIds[i];
-    var resultIterator = AdsApp.report(awqlQueries[varId]).rows();
+    var resultIterator = AdsApp.report(gaqlQueries[varId]).rows();
 
     while (resultIterator.hasNext()) {
       var result = resultIterator.next();
@@ -356,11 +356,11 @@ function queryAndAggregateData(awqlQueries) {
         };
       }
 
-      dataObj[varId][date]['cost'] += Number(result["Cost"].replace(',', '')) || 0;
-      dataObj[varId][date]['impressions'] += Number(result["Impressions"].replace(',', '')) || 0;
-      dataObj[varId][date]['clicks'] += Number(result["Clicks"].replace(',', '')) || 0;
-      dataObj[varId][date]['conversions'] += Number(result["Conversions"].replace(',', '')) || 0;
-      dataObj[varId][date]['conversion_value'] += Number(result["ConversionValue"].replace(',', '')) || 0;
+      dataObj[varId][date]['cost'] += result["metrics.cost_micros"] / 1e6 || 0;
+      dataObj[varId][date]['impressions'] += result["metrics.impressions"] || 0;
+      dataObj[varId][date]['clicks'] += result["metrics.clicks"] || 0;
+      dataObj[varId][date]['conversions'] += result["metrics.conversions"] || 0;
+      dataObj[varId][date]['conversion_value'] += result["metrics.conversions_value"] || 0;
     }
 
   }
@@ -389,7 +389,7 @@ function collectDataForTestConfigs(testConfigurations, gsheetId) {
       continue;
     }
 
-    try {
+     try {
       config.entities = getEntityIdsForTest(config);
       // Skip if no entities identified for test in current account
       if (Object.keys(config.entities).length === 0) {
