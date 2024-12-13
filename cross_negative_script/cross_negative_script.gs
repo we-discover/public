@@ -4,19 +4,19 @@
                     with the option to use the original match type or convert all to exact match.
     License:        https://github.com/we-discover/public/blob/master/LICENSE
     Version:        1.2.0
-    Released:       2024-11-01
+    Released:       2025-01-01
     Author:         Nathan Ifill (@nathanifill)
     Contact:        scripts@we-discover.com
 */
 
 /************************************************* SETTINGS **************************************************************/
 
-// Options to choose between campaign-level and ad group-level negative keywords
+//  Options to choose between campaign-level and ad group-level negative keywords
 const ADD_CAMPAIGN_LEVEL_NEGATIVES = true;
 const ADD_AD_GROUP_LEVEL_NEGATIVES = true;
 const MAX_NEGATIVE_KEYWORDS = 5000; // This determines the maximum number of negative keywords to add to a campaign or ad group
 
-// Option to choose negative keyword match type
+//  Option to choose negative keyword match type
 const USE_ORIGINAL_MATCH_TYPE = false; // Set to false to use negative exact match for all or true to keep original match type
 
 /* 
@@ -27,13 +27,23 @@ const USE_ORIGINAL_MATCH_TYPE = false; // Set to false to use negative exact mat
     blank is NOT recommended as (depending on the size of your account) the script may not complete before Google's
     30-minute execution limit.
  */
-const INCLUDE_CAMPAIGN_NAMES = []; // Example: ['IncludePart1', 'IncludePart2'] or []
-const EXCLUDE_CAMPAIGN_NAMES = []; // Example: ['ExcludePart1', 'ExcludePart2'] or []
+const INCLUDE_CAMPAIGN_NAMES = ['U.S.']; // Example: ['Brand', 'Generic'] or []
+const EXCLUDE_CAMPAIGN_NAMES = []; // Example: ['U.S.', 'Christmas'] or []
 
-// Option to enable or disable logging for faster execution
+//  Option to enable or disable logging for faster execution
 const ENABLE_LOGGING = true; // Set to true to log what changes the script is making or set to false to speed up the script
 
+//  Option to generate spreadsheet log
+const ENABLE_SPREADSHEET_LOG = false; // Set to true to generate a spreadsheet detailing the changes and email you the log 
+
 /*************************************************************************************************************************/
+
+let ss;
+let body = "";
+const ssData = {};
+const currentAccount = AdsApp.currentAccount();
+const accountName = currentAccount.getName();
+const accountId = currentAccount.getCustomerId();
 
 function main() {
   log(`Starting process...`);
@@ -42,6 +52,12 @@ function main() {
   log(`Add ad group-level negatives? ${ADD_AD_GROUP_LEVEL_NEGATIVES}`);
   log(`Use original match type for negatives? ${USE_ORIGINAL_MATCH_TYPE}`);
   log("");
+
+  if (ENABLE_SPREADSHEET_LOG) {
+    const ssTemplateUrl = "https://docs.google.com/spreadsheets/d/18zlEN-7ddxBndhfNnGG1WgWqBfugTcPSikyFeUiD-Xc/edit?gid=0#gid=0";
+    const ssTemplate = SpreadsheetApp.openByUrl(ssTemplateUrl);
+    ss = ssTemplate.copy(`${accountName} (${accountId}) Cross Negative Script | WeDiscover`);
+  }
 
   if (INCLUDE_CAMPAIGN_NAMES.length > 0) {
     log(`Campaign name must contain: ${INCLUDE_CAMPAIGN_NAMES}`);
@@ -62,6 +78,35 @@ function main() {
     addAdGroupLevelNegatives();
   }
 
+  if (ENABLE_SPREADSHEET_LOG) {
+    let rowCount = 2;
+    const sheet = ss.getSheetByName("DATA DUMP");
+
+    for (let [keyword, entities] of Object.entries(ssData)) {
+      sheet.getRange(1,1,1,2).setValues([["Negative Keyword", "Entity"]]).setFontWeights([['bold', 'bold']]);
+      sheet.getRange(rowCount, 1, 1, 2).setValues([[keyword, entities]]);
+      rowCount++;
+    }
+
+    sheet.setFrozenRows(1);
+    //sheet.deleteColumns(3, sheet.getMaxColumns());
+    // Sort the data by keyword ascending
+    sheet.getRange(2,1, sheet.getLastRow(), sheet.getLastColumn()).sort({column: 1, ascending: true});
+
+    log("");
+    log("Get your spreadsheet log here: " + ss.getUrl());
+    log("");
+
+    try {
+      const subject = `[CNS] Cross Negative Script Log for ${accountName} (${accountId}) | WeDiscover`;
+      const userEmail = ss.getOwner().getEmail();
+      
+      MailApp.sendEmail(userEmail, subject, body);
+    } catch (e) {
+      Logger.log("Unable to send cross negative script log email.");
+    }
+  }
+  
   log("Script processing complete. Have a nice day!");
 }
 
@@ -70,7 +115,10 @@ function main() {
  */
 function addCampaignLevelNegatives() {
   const campaigns = [];
-  const campaignIterator = AdsApp.campaigns().withCondition("Status = ENABLED").get();
+  const campaignIterator = AdsApp.campaigns()
+    .withCondition("campaign.status = ENABLED")
+    .withCondition("campaign.experiment_type = BASE")
+    .get();
   while (campaignIterator.hasNext()) {
     const campaign = campaignIterator.next();
     if (shouldProcessCampaign(campaign.getName())) {
@@ -97,14 +145,21 @@ function addCampaignLevelNegatives() {
  * Adds negative keywords at the ad group level.
  */
 function addAdGroupLevelNegatives() {
-  const campaignIterator = AdsApp.campaigns().withCondition("Status = ENABLED").get();
+  const campaignIterator = AdsApp.campaigns()
+    .withCondition("campaign.status = ENABLED")
+    .withCondition("campaign.experiment_type = BASE")
+    .get();
   while (campaignIterator.hasNext()) {
     const campaign = campaignIterator.next();
     if (shouldProcessCampaign(campaign.getName())) {
       log(`Now processing the ${campaign.getName()} campaign.`);
       log("");
       const adGroups = [];
-      const adGroupIterator = campaign.adGroups().withCondition("Status = ENABLED").get();
+      const adGroupIterator = campaign
+        .adGroups()
+        .withCondition("ad_group.status = ENABLED")
+        .withCondition("campaign.status = ENABLED")
+        .get();
       while (adGroupIterator.hasNext()) {
         const adGroup = adGroupIterator.next();
         const keywords = getKeywords(adGroup);
@@ -112,7 +167,11 @@ function addAdGroupLevelNegatives() {
       }
       adGroups.forEach(({ adGroup, keywords }) => {
         if (keywords.length > 0) {
-          log(`Adding ${keywords.length} keywords from the ${adGroup.getName()} ad group to the other ad groups in the ${campaign.getName()} campaign.`);
+          log(
+            `Adding ${
+              keywords.length
+            } keywords from the ${adGroup.getName()} ad group to the other ad groups in the ${campaign.getName()} campaign.`
+          );
           log("");
           adGroups.forEach(({ adGroup: otherAdGroup }) => {
             if (adGroup.getId() !== otherAdGroup.getId()) {
@@ -159,27 +218,56 @@ function getKeywords(entity) {
 /**
  * Adds negative keywords to an entity.
  */
+
 function addNegativesToEntity(entity, keywords) {
   keywords.forEach(({ text, matchType }) => {
     const negativeMatchType = USE_ORIGINAL_MATCH_TYPE ? matchType : "EXACT";
+    let formattedText;
     switch (negativeMatchType) {
       case "BROAD":
-        entity.createNegativeKeyword(text);
+        formattedText = text;
+        createNegativeKeyword(formattedText, entity);
         break;
       case "PHRASE":
-        entity.createNegativeKeyword(`"${text}"`);
+        formattedText = `"${text}"`;
+        createNegativeKeyword(formattedText, entity);
         break;
       case "EXACT":
-        entity.createNegativeKeyword(`[${text}]`);
+        formattedText = `[${text}]`;
+        createNegativeKeyword(formattedText, entity);
         break;
     }
   });
+}
+
+function createNegativeKeyword(formattedText, entity) {
+  entity.createNegativeKeyword(formattedText);
+  ssData[formattedText] = ssData[formattedText] ? ssData[formattedText] : [];
+  const entityType = entity.getEntityType();
+  let entityObj;
+
+  if (entityType === "AdGroup") {
+    //entityObj = { campaign: entity.getBaseCampaign().getName(), adGroup: entity.getBaseAdGroup().getName() };
+    entityObj = `${entity.getBaseCampaign().getName()} [${entity.getBaseAdGroup().getName()}]`;
+  }
+
+  if (entityType === "Campaign") {
+    //entityObj = { campaign: entity.getBaseCampaign().getName() };
+    entityObj = `${entity.getBaseCampaign().getName()}`;
+  }
+
+  // If spreadsheet data doesn't already have this entity in it, add it to the list
+  if (!ssData[formattedText].includes(entityObj)) {
+    ssData[formattedText].push(entityObj);
+  }
 }
 
 /**
  * Logs messages if logging is enabled.
  */
 function log(message) {
+  body += message + "\n";
+
   if (ENABLE_LOGGING) {
     Logger.log(message);
   }
