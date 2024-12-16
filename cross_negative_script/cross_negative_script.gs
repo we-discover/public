@@ -27,18 +27,22 @@ const USE_ORIGINAL_MATCH_TYPE = false; // Set to false to use negative exact mat
     blank is NOT recommended as (depending on the size of your account) the script may not complete before Google's
     30-minute execution limit.
  */
-const INCLUDE_CAMPAIGN_NAMES = ['U.S.']; // Example: ['Brand', 'Generic'] or []
+const INCLUDE_CAMPAIGN_NAMES = []; // Example: ['Brand', 'Generic'] or []
 const EXCLUDE_CAMPAIGN_NAMES = []; // Example: ['U.S.', 'Christmas'] or []
 
 //  Option to enable or disable logging for faster execution
 const ENABLE_LOGGING = true; // Set to true to log what changes the script is making or set to false to speed up the script
 
-//  Option to generate spreadsheet log
-const ENABLE_SPREADSHEET_LOG = false; // Set to true to generate a spreadsheet detailing the changes and email you the log 
+//  Option to generate spreadsheet log and send it to you via email
+const ENABLE_SPREADSHEET_LOG = true; // Set to true to generate a spreadsheet detailing the changes and email you the log
+const EMAILS = ""; // Enter emails to send spreadsheet log to. If you don't want the email, leave this blank, e.g. ""
+// To enter multiple email addresses, separate them with commas
+// Example: "pia@example.com" or "indi@example.com,nadia@example.com".
 
 /*************************************************************************************************************************/
 
 let ss;
+let ssId;
 let body = "";
 const ssData = {};
 const currentAccount = AdsApp.currentAccount();
@@ -57,6 +61,7 @@ function main() {
     const ssTemplateUrl = "https://docs.google.com/spreadsheets/d/18zlEN-7ddxBndhfNnGG1WgWqBfugTcPSikyFeUiD-Xc/edit?gid=0#gid=0";
     const ssTemplate = SpreadsheetApp.openByUrl(ssTemplateUrl);
     ss = ssTemplate.copy(`${accountName} (${accountId}) Cross Negative Script | WeDiscover`);
+    ssId = ss.getId();
   }
 
   if (INCLUDE_CAMPAIGN_NAMES.length > 0) {
@@ -99,11 +104,15 @@ function main() {
 
     try {
       const subject = `[CNS] Cross Negative Script Log for ${accountName} (${accountId}) | WeDiscover`;
-      const userEmail = ss.getOwner().getEmail();
-      
+      // If no email address specified and log requested, use the owner of the spreadsheet
+      const userEmail = EMAILS ? EMAILS : ss.getOwner().getEmail();
+      // Turn the user entered string into a string array String[] with trimmed email addresses
+      const userEmailArr = userEmail.split(",").map(el => el.trim());
+      // Set access of spreadsheet log to the email addresses
+      DriveApp.getFileById(ssId).addEditors(userEmailArr);
       MailApp.sendEmail(userEmail, subject, body);
     } catch (e) {
-      Logger.log("Unable to send cross negative script log email.");
+      throw("Unable to send Cross Negative Script Log email to the following emails: " + userEmailArr);
     }
   }
   
