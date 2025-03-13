@@ -287,13 +287,8 @@ function createNegativeKeyword(formattedText, entity) {
       entityObj = "CAMPAIGN: " + entity.getName();
     }
     
-
-    // This could be relaxed
     if (entityObj && !ssData[formattedText].includes(entityObj)) {
       ssData[formattedText].push(entityObj);
-      /*Logger.log("formattedText: " + formattedText);
-      Logger.log("ssData[formattedText]: " + ssData[formattedText])
-      Logger.log("entityObj: " + entityObj);*/
     }
 
   } catch (error) {
