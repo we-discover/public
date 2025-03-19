@@ -4,7 +4,7 @@
                     with the option to use the original match type or convert all to exact match.
     License:        https://github.com/we-discover/public/blob/master/LICENSE
     Version:        1.2.2
-    Released:       2025-03-13
+    Released:       2025-03-20
     Author:         Nathan Ifill (@nathanifill)
     Contact:        scripts@we-discover.com
 */
@@ -45,6 +45,7 @@ let ss;
 let ssId;
 let body = "";
 const ssData = {};
+const entityList = [];
 const currentAccount = AdsApp.currentAccount();
 const accountName = currentAccount.getName();
 const accountId = currentAccount.getCustomerId();
@@ -101,7 +102,8 @@ function main() {
     sheet.getRange(2, 1, sheet.getLastRow(), sheet.getLastColumn())
       .sort({ column: 1, ascending: true });
     
-    sheet.getRange("C2").setValue(`=IFERROR(TRANSPOSE(SORT(UNIQUE(TRIM(SPLIT(TEXTJOIN(",", TRUE, B$2:B), "," ))),1,TRUE)),"")`);
+    // Add all unique entities to column C of the Data Dump sheet
+    sheet.getRange(2, 3, entityList.length, 1).setValues(entityList.map(entity => [entity]));
 
     log("");
     log("Get your spreadsheet log here: " + ss.getUrl());
@@ -285,6 +287,10 @@ function createNegativeKeyword(formattedText, entity) {
       entityObj = "AD GROUP: " + entity.getCampaign().getName() + " [" + entity.getName() + "]";
     } else if (entityType === "Campaign") {
       entityObj = "CAMPAIGN: " + entity.getName();
+    }
+    
+    if (!entityList.includes(entityObj)) {
+       entityList.push(entityObj);
     }
     
     if (entityObj && !ssData[formattedText].includes(entityObj)) {
