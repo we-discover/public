@@ -296,7 +296,7 @@ function buildQueriesForVariants(config) {
 
     var dateCondition = config.start_date + " AND " + config.end_date;
     if (config.config_type === 'prepost' && variantId === 'pre') {
-      dateCondition = config.pre_start_date + "," + config.pre_end_date;
+      dateCondition = config.pre_start_date + " AND " + config.pre_end_date;
     }
     if (config.config_type === 'prepost' && variantId === 'post') {
       dateCondition = config.post_start_date + " AND " + config.post_end_date;
@@ -338,7 +338,7 @@ function queryAndAggregateData(gaqlQueries) {
     while (resultIterator.hasNext()) {
       var result = resultIterator.next();
 
-      var date = result["Date"];
+      var date = result["segments.date"];
 
       if (!dataObj.hasOwnProperty(varId)) {
         dataObj[varId] = {};
@@ -356,11 +356,11 @@ function queryAndAggregateData(gaqlQueries) {
         };
       }
 
-      dataObj[varId][date]['cost'] += result["metrics.cost_micros"] / 1e6 || 0;
-      dataObj[varId][date]['impressions'] += result["metrics.impressions"] || 0;
-      dataObj[varId][date]['clicks'] += result["metrics.clicks"] || 0;
-      dataObj[varId][date]['conversions'] += result["metrics.conversions"] || 0;
-      dataObj[varId][date]['conversion_value'] += result["metrics.conversions_value"] || 0;
+      dataObj[varId][date]['cost'] += parseFloat(result["metrics.cost_micros"]) / 1e6 || 0;
+      dataObj[varId][date]['impressions'] += parseFloat(result["metrics.impressions"]) || 0;
+      dataObj[varId][date]['clicks'] += parseFloat(result["metrics.clicks"]) || 0;
+      dataObj[varId][date]['conversions'] += parseFloat(result["metrics.conversions"]) || 0;
+      dataObj[varId][date]['conversion_value'] += parseFloat(result["metrics.conversions_value"]) || 0;
     }
 
   }
