@@ -1,22 +1,24 @@
- /**
+/**
  * 🐱 DataKitten
  * * * Description: Monitors hourly Google Ads performance using statistical anomaly detection.
  * * * Setup: Add Slack Webhook URL in SLACK_WEBHOOK_URL below. Schedule to run Hourly.
+ * * * Update: Split-Timeline Analysis (Real-time for Traffic, Lagged for Conversions).
  */
-
 
 const CONFIG = {
   // 1. Webhook URL is loaded from the secure constant above
   SLACK_WEBHOOK_URL: '', 
 
-
   // Sensitivity: How many standard deviations (SD) before we alert?
   // 2.5 = Approx 1 in 80 events (Balanced)
   SENSITIVITY_THRESHOLD: 2.5, 
   
+  // Minimum Clicks Threshold:
+  // If the hour had fewer than X clicks, skip analysis to avoid statistical noise.
+  MIN_CLICKS_THRESHOLD: 100,
+
   // Conversion Lag (Days):
   // Applies ONLY to metrics marked with 'useLag: true' (Conversions, CPA).
-  // 0 = Check Today's data for Conversions (if you're using online conversions).
   // 1 = Check Yesterday's data for Conversions (Safe for OCI).
   CONVERSION_LAG: 1,
 
@@ -145,11 +147,20 @@ function main() {
   Logger.log(`📅 Lagged Date:    ${laggedDateStr} (For Conversions - Lag: ${CONFIG.CONVERSION_LAG} days)`);
 
   // --- 2. Fetch Data (Double Fetch) ---
-  
-  Logger.log("------------------------------------------");
 
   // Fetch Real-Time Data & History (Baseline excludes Today)
   const rtCurrent = fetchSpecificDateStats(targetHour, realTimeDateStr);
+  
+  // --- THRESHOLD CHECK ---
+  // If clicks are too low, metrics will be too volatile to analyse reliably.
+  if (rtCurrent && rtCurrent.clicks < CONFIG.MIN_CLICKS_THRESHOLD) {
+    Logger.log("------------------------------------------");
+    Logger.log(`⚠️ Low Volume Detected: Only ${rtCurrent.clicks} clicks in this hour.`);
+    Logger.log(`   Skipping analysis to avoid false alerts caused by low data density.`);
+    Logger.log(`   (Minimum Threshold: ${CONFIG.MIN_CLICKS_THRESHOLD} clicks)`);
+    return; // Exit script
+  }
+  
   const rtHistory = fetchHistoryStats(targetHour, realTimeDateStr);
 
   // Fetch Lagged Data & History (Baseline excludes Lagged Date onwards)
@@ -179,8 +190,6 @@ function main() {
   });
 
   // --- 4. Run Analysis ---
-  
-  Logger.log("------------------------------------------");
   checkAnomalies(finalCurrent, finalHistory);
 }
 
@@ -237,8 +246,6 @@ function sendSlackAlert(metric, currentVal, normalVal, zScore) {
   const isDrop = zScore < 0;
   const emoji = isDrop ? "📉" : "📈";
   const severity = Math.abs(zScore) > 3 ? "🚨 URGENT" : "⚠️ Warning";
-  const accountId = AdsApp.currentAccount().getCustomerId().replace(/-/g, "");
-  const deepLink = `https://ads.google.com/aw/overview?__u=${accountId}`;
 
   // Add context to the alert title if it's a lagged metric
   const timeContext = metric.useLag ? `(Lagged Data: ${CONFIG.CONVERSION_LAG}d ago)` : "(Real-Time Data)";
@@ -290,16 +297,6 @@ function sendSlackAlert(metric, currentVal, normalVal, zScore) {
         "text": {
             "type": "mrkdwn",
             "text": `💡 *Recommended Action:* ${metric.action}`
-        },
-        "accessory": {
-          "type": "button",
-          "text": {
-            "type": "plain_text",
-            "text": "View Account",
-            "emoji": true
-          },
-          "url": deepLink,
-          "action_id": "button-action"
         }
       }
     ]
@@ -349,7 +346,8 @@ function fetchHistoryStats(hour, targetDateStr) {
     const row = report.next();
     const date = row.segments.date;
 
-    // Filter out the Test Date and any dates NEWER than it (the lag gap)
+    // CRITICAL: Filter out the Test Date and any dates NEWER than it (the lag gap)
+    // String comparison works for YYYY-MM-DD (e.g. "2025-12-04" < "2025-12-05")
     if (date >= targetDateStr) {
       continue; 
     }
