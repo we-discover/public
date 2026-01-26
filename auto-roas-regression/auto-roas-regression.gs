@@ -34,29 +34,59 @@ const CONFIG = {
   // Set to 1.0 for standard Gross Profit. Set > 1.0 to account for LTV.
   conversionValueMultiplier: 1.0,
 
-  // 3. DATA QUALITY CHECK (R-SQUARED)
-  // 0.5 means "We need at least a 50% correlation match".
+  // 3. DATA QUALITY CHECK (The "BS Detector")
+  // Google's simulation data can sometimes be messy or random.
+  // This setting tells the script how strictly to judge the data quality before acting.
+  // 
+  // 1.0 = Perfection. The data points form a perfect line.
+  // 0.0 = Chaos. The data looks like a splatter painting.
+  // 
+  // We recommend 0.5. This means "The data must be at least 50% coherent".
+  // If the data is too messy, the script will simply skip the campaign this week.
   minRSquared: 0.5,
   
-  // 4. SAFETY GUARDRAILS
+  // 4. SAFETY GUARDRAILS (The "Bowling Bumpers")
+  // These settings ensure the script never makes a drastic or dangerous change.
+  // It keeps your ROAS target within a safe, sensible lane.
   guardrails: {
-    maxRoasChange: 0.2, // Max absolute swing (e.g. +/- 0.2)
-    minRoasLimit: 0.7,  // Floor
-    maxRoasLimit: 10.0  // Ceiling
+    // Max Swing: This limits how much the target can move in one go.
+    // Example: If set to 0.2 and your current ROAS is 2.0, the script
+    // can only move the target to 1.8 or 2.2. It prevents sudden shocks.
+    maxRoasChange: 0.2, 
+    
+    // The Floor: The script will NEVER set a target lower than this.
+    // 0.7 equals a 70% ROAS.
+    minRoasLimit: 0.7,  
+    
+    // The Ceiling: The script will NEVER set a target higher than this.
+    // 10.0 equals a 1000% ROAS.
+    maxRoasLimit: 10.0  
   },
 
-  // 5. REPORTING
-  // Enter the URL of your spreadsheet log. If you don't make one, the
-  // script will make one for you.
+  // 5. REPORTING (The Spreadsheet)
+  // INSTRUCTIONS FOR FIRST RUN:
+  // 1. Leave 'spreadsheetUrl' BLANK ("") below.
+  // 2. Enter your email address in 'emailAddresses'.
+  // 3. Run the script. It will create a new sheet, GRANT YOU ACCESS, and email you the link.
   //
-  // Enter your email address in the section below if you'd like to be
-  // emailed the log. You can put in multiple email addresses, separated
-  // by commas, e.g. "lucy@example.com, rabeena@example.com".
+  // INSTRUCTIONS FOR FUTURE RUNS:
+  // 1. Open the spreadsheet the script created. 
+  // 2. Copy the URL from your browser address bar.
+  // 3. Paste it inside the quotes for 'spreadsheetUrl' below.
+  //
+  // This allows the script to keep adding new history to the same sheet 
+  // every week instead of creating a mess of new files.
   spreadsheetUrl: "", 
+  
+  // Who should get the email? (They will also be given Edit access to the sheet).
+  // Example for one person: "ash@example.com"
+  // Example for multiple people: "ash@example.com, lucy@example.com, rabeena@example.com"
   emailAddresses: "",
 
   // 6. ACTION MODE
-  // true = LIVE UPDATES. false = READ ONLY.
+  // true  = LIVE MODE. The script WILL update your campaign targets.
+  // false = READ ONLY. The script calculates the best ROAS but changes nothing.
+  // We recommend running on 'false' for a few weeks to trust the data first.
   updateCampaigns: false
 };
 
@@ -243,10 +273,26 @@ function ensureSpreadsheet() {
     
     ss = SpreadsheetApp.create(fileName);
     
-    if (CONFIG.emailAddresses) {
+    // SHARE AND EMAIL
+    const emailStr = CONFIG.emailAddresses;
+    if (emailStr && emailStr.length > 0) {
+      // 1. Grant Access
+      // Clean up the string and split by commas to handle multiple people
+      const editors = emailStr.split(",").map(function(e) { return e.trim(); });
+      
+      try {
+        ss.addEditors(editors);
+        Logger.log(`   🤝 Granted access to: ${editors.join(", ")}`);
+      } catch (e) {
+        Logger.log(`   ⚠️ Failed to grant access: ${e.toString()}`);
+      }
+
+      // 2. Send Notification
       MailApp.sendEmail(CONFIG.emailAddresses, "New ROAS Regression Log", 
         `Fresh hot spreadsheet created for ${accountName}.\n\nAccess it here: ${ss.getUrl()}`
       );
+    } else {
+        Logger.log("   ⚠️ No email provided. You must find the sheet URL in these logs.");
     }
   }
 
@@ -257,21 +303,22 @@ function ensureSpreadsheet() {
   }
 
   // 2. Data Updates
-  const dataSheet = getOrCreateSheet(ss, "Weekly Data Updates", [
-    "Timestamp", "Campaign", "Sim Start Date", "Sim End Date", 
+  const dataSheet = getOrCreateSheet(ss, "Historical Simulation Data", [
+    "Timestamp", "Campaign", "Start Date", "End Date", 
     "Current Target ROAS", 
     "Raw Points (Hidden)", 
     "Coeff A", "Coeff B", "Coeff C", "R-Squared", 
-    "Raw Optimal ROAS", "Exp. Profit (Optimal)"
+    "Optimal ROAS", "Predicted Profit"
   ]);
   
   // 3. Performance Log
   const perfSheet = getOrCreateSheet(ss, "Weekly Performance Log", [
-    "Timestamp", "Campaign", "Perf Start Date", "Perf End Date", 
+    "Timestamp", "Campaign", "Start Date", "End Date", 
     "Action Taken", 
-    "Actual ROAS", "Recommended ROAS Target", 
-    "Est. Profit (Current)", "Exp. Profit (New Target)", "Profit Diff", 
-    "Actual Spend", "Actual Revenue"
+    "Actual Spend", "Predicted Spend", 
+    "Actual Revenue", "Predicted Revenue", 
+    "Actual ROAS", "Optimal ROAS", 
+    "Actual Profit", "Predicted Profit", "Profit Diff"
   ]);
 
   const defaultSheet = ss.getSheetByName("Sheet1");
@@ -315,7 +362,7 @@ function polishSpreadsheet(sheetObj) {
 
       // Column widths
       sheet.setColumnWidth(1, 200); 
-      sheet.setColumnWidth(2, 400); 
+      sheet.setColumnWidth(2, 500); 
 
       const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
       for (let i = 0; i < headers.length; i++) {
@@ -333,9 +380,9 @@ function polishSpreadsheet(sheetObj) {
       sheet.getDataRange().createFilter();
     }
 
-    if (sheet.getName() === "Weekly Data Updates") {
-       sheet.hideColumns(6); 
-       try { sheet.hideColumns(7, 4); } catch(e){} 
+    if (sheet.getName() === "Historical Simulation Data") {
+       sheet.hideColumns(6); // Hide Raw Points
+       try { sheet.hideColumns(7, 4); } catch(e){} // Hide Coeffs
     }
 
     if (maxCols > lastCol) {
@@ -371,7 +418,9 @@ function updateInteractiveDashboard(sheetObj) {
     dropdownCell.setValue(firstCampaign);
   }
 
-  const queryFormula = `=QUERY('Weekly Performance Log'!A:L, "SELECT A, H, I WHERE B = '"&B1&"' ORDER BY A LABEL H 'Current Strategy', I 'Optimised Model'", 1)`;
+  // Adjusted Query for new Column Layout in Perf Sheet
+  // Current Profit is Col L (12), Predicted Profit is Col M (13)
+  const queryFormula = `=QUERY('Weekly Performance Log'!A:N, "SELECT A, L, M WHERE B = '"&B1&"' ORDER BY A LABEL L 'Actual Profit', M 'Predicted Profit'", 1)`;
   dash.getRange("A20").setFormula(queryFormula); 
   
   const charts = dash.getCharts();
@@ -383,10 +432,10 @@ function updateInteractiveDashboard(sheetObj) {
     .setChartType(Charts.ChartType.LINE)
     .addRange(dash.getRange("A20:C"))
     .setPosition(3, 1, 0, 0)
-    .setOption('title', 'Profit Impact: Current Strategy vs. Optimised Model')
+    .setOption('title', 'Profit Impact: Actual vs. Predicted Model')
     .setOption('colors', ['#333333', '#C33B48']) 
     .setOption('hAxis.title', 'Date')
-    .setOption('vAxis.title', 'Expected Profit')
+    .setOption('vAxis.title', 'Profit')
     .setOption('width', 1000)
     .setOption('height', 500)
     .setOption('legend', {position: 'top'});
@@ -414,9 +463,22 @@ function logToSpreadsheet(sheetObj, metrics) {
 
   const rawString = metrics.rawPoints.map(p => Object.keys(p).map(key => `${key}=${p[key]}`).join(", ")).join(" | ");
 
-  const currentEstProfit = (metrics.stats.revenue * CONFIG.conversionValueMultiplier) - metrics.stats.cost;
-  const profitDiff = metrics.expProfit - currentEstProfit;
+  // Actual Profit
+  const actualProfit = (metrics.stats.revenue * CONFIG.conversionValueMultiplier) - metrics.stats.cost;
+  const predictedProfit = metrics.expProfit;
+  const profitDiff = predictedProfit - actualProfit;
 
+  // Derive Predicted Metrics based on Optimal ROAS
+  let predictedSpend = 0;
+  let predictedRevenue = 0;
+  
+  const effectiveMargin = (metrics.optimalRoas * CONFIG.conversionValueMultiplier) - 1;
+  if (effectiveMargin > 0) {
+      predictedSpend = predictedProfit / effectiveMargin;
+      predictedRevenue = predictedSpend * metrics.optimalRoas;
+  }
+
+  // 1. Data Sheet (Historical Simulation Data)
   sheetObj.dataSheet.appendRow([
     Utilities.formatDate(new Date(), tz, "dd-MMM-yyyy HH:mm"),
     metrics.campaign,
@@ -432,19 +494,22 @@ function logToSpreadsheet(sheetObj, metrics) {
     metrics.expProfit
   ]);
 
+  // 2. Performance Sheet (Weekly Performance Log)
   sheetObj.perfSheet.appendRow([
     Utilities.formatDate(new Date(), tz, "dd-MMM-yyyy HH:mm"),
     metrics.campaign,
     Utilities.formatDate(perfStart, tz, format),
     Utilities.formatDate(perfEnd, tz, format),
     metrics.action,                 
-    metrics.stats.roas,          
-    metrics.finalRoas,           
-    currentEstProfit,            
-    metrics.expProfit,           
-    profitDiff,                  
-    metrics.stats.cost,          
-    metrics.stats.revenue        
+    metrics.stats.cost,          // Actual Spend
+    predictedSpend,              // Predicted Spend
+    metrics.stats.revenue,       // Actual Revenue
+    predictedRevenue,            // Predicted Revenue
+    metrics.stats.roas,          // Actual ROAS
+    metrics.finalRoas,           // Optimal ROAS (Guarded)
+    actualProfit,                // Actual Profit
+    predictedProfit,             // Predicted Profit
+    profitDiff                   // Diff
   ]);
 }
 
