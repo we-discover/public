@@ -10,12 +10,7 @@
  * 2. It uses quadratic regression to model the relationship between ROAS and Profit.
  * 3. It identifies the specific ROAS target where profit is maximized.
  * 4. It logs the analysis to a spreadsheet and updates the campaign (if enabled).
- *
- * KEY FEATURES:
- * - Works on Standard Campaigns and Portfolio Strategies.
- * - Safety Guardrails: Prevents wild swings in bidding.
- * - Interactive Dashboard: Visualises "Current Strategy" vs "Optimised Model".
- * - Auditing: Logs detailed performance metrics and action history.
+ * 5. It emails the full execution log to the specified users.
  *
  * ==============================================================================
  * CONFIGURATION
@@ -24,69 +19,28 @@
 
 const CONFIG = {
   // 1. CAMPAIGN SELECTION
-  // How to use this setting:
-  // - Run on ONE campaign:      ['My Campaign Name']
-  // - Run on MULTIPLE campaigns: ['Campaign A', 'Campaign B']
-  // - Run on ALL campaigns:      [] 
   campaignNames: [], 
   
   // 2. VALUE ADJUSTMENT
-  // Set to 1.0 for standard Gross Profit. Set > 1.0 to account for LTV.
   conversionValueMultiplier: 1.0,
 
-  // 3. DATA QUALITY CHECK (The "BS Detector")
-  // Google's simulation data can sometimes be messy or random.
-  // This setting tells the script how strictly to judge the data quality before acting.
-  // 
-  // 1.0 = Perfection. The data points form a perfect line.
-  // 0.0 = Chaos. The data looks like a splatter painting.
-  // 
-  // We recommend 0.5. This means "The data must be at least 50% coherent".
-  // If the data is too messy, the script will simply skip the campaign this week.
+  // 3. DATA QUALITY CHECK
   minRSquared: 0.5,
   
-  // 4. SAFETY GUARDRAILS (The "Bowling Bumpers")
-  // These settings ensure the script never makes a drastic or dangerous change.
-  // It keeps your ROAS target within a safe, sensible lane.
+  // 4. SAFETY GUARDRAILS
   guardrails: {
-    // Max Swing: This limits how much the target can move in one go.
-    // Example: If set to 0.2 and your current ROAS is 2.0, the script
-    // can only move the target to 1.8 or 2.2. It prevents sudden shocks.
     maxRoasChange: 0.2, 
-    
-    // The Floor: The script will NEVER set a target lower than this.
-    // 0.7 equals a 70% ROAS.
-    minRoasLimit: 0.7,  
-    
-    // The Ceiling: The script will NEVER set a target higher than this.
-    // 10.0 equals a 1000% ROAS.
-    maxRoasLimit: 10.0  
+    minRoasLimit: 0.8,  
+    maxRoasLimit: 4.0  
   },
 
   // 5. REPORTING (The Spreadsheet)
-  // INSTRUCTIONS FOR FIRST RUN:
-  // 1. Leave 'spreadsheetUrl' BLANK ("") below.
-  // 2. Enter your email address in 'emailAddresses'.
-  // 3. Run the script. It will create a new sheet, GRANT YOU ACCESS, and email you the link.
-  //
-  // INSTRUCTIONS FOR FUTURE RUNS:
-  // 1. Open the spreadsheet the script created. 
-  // 2. Copy the URL from your browser address bar.
-  // 3. Paste it inside the quotes for 'spreadsheetUrl' below.
-  //
-  // This allows the script to keep adding new history to the same sheet 
-  // every week instead of creating a mess of new files.
   spreadsheetUrl: "", 
   
-  // Who should get the email? (They will also be given Edit access to the sheet).
-  // Example for one person: "ash@example.com"
-  // Example for multiple people: "ash@example.com, lucy@example.com, rabeena@example.com"
+  // Who should get the email? (They will also need to be given Edit access to the sheet).
   emailAddresses: "",
 
   // 6. ACTION MODE
-  // true  = LIVE MODE. The script WILL update your campaign targets.
-  // false = READ ONLY. The script calculates the best ROAS but changes nothing.
-  // We recommend running on 'false' for a few weeks to trust the data first.
   updateCampaigns: false
 };
 
@@ -97,12 +51,22 @@ const CONFIG = {
  */
 
 function main() {
+  // --- LOG CAPTURE SETUP ---
+  const logBuffer = [];
+  const originalLogger = Logger.log;
+  // This interceptor ensures everything logged to the console is saved for the email
+  Logger.log = function(msg) {
+    originalLogger(msg);
+    logBuffer.push(msg);
+  };
+
   logHeader("🚀 IGNITING PROFIT ENGINE...");
 
   // --- STEP 0: SETUP SPREADSHEET ---
   const sheetObj = ensureSpreadsheet();
   if (!sheetObj) {
     Logger.log("💥 Critical Failure: Unable to spin up the spreadsheet.");
+    sendFinalEmail(logBuffer.join("\n"), "CRITICAL FAILURE");
     return;
   }
   Logger.log(`📜 Mission Report: ${sheetObj.url}`);
@@ -141,6 +105,9 @@ function main() {
   } else {
     logHeader(`🏁 MISSION COMPLETE. Processed ${processedCount} Campaign(s).`);
   }
+
+  // --- STEP 3: SEND LOGS VIA EMAIL ---
+  sendFinalEmail(logBuffer.join("\n"), `Processed ${processedCount} Campaigns`);
 }
 
 /**
@@ -153,7 +120,6 @@ function processSingleCampaign(row, sheetObj) {
   
   logHeader(`🕵️ ANALYSING: "${campaignName}"`);
 
-  // --- STEP 1: GET CURRENT SETTINGS ---
   const currentSettings = getCurrentRoasSettings(campaignId);
   if (!currentSettings) {
     Logger.log(`🚫 Abort: Couldn't find current bidding settings.`);
@@ -161,13 +127,12 @@ function processSingleCampaign(row, sheetObj) {
   }
   
   const currentRoas = currentSettings.roas;
-  Logger.log(`   📍 Current Target: ${currentRoas.toFixed(2)}`);
+  Logger.log(`    📍 Current Target: ${currentRoas.toFixed(2)}`);
 
-  // --- STEP 2: CALCULATE PROFIT CURVE ---
   const points = row.campaignSimulation.targetRoasPointList.points;
   let regressionData = [];
 
-  Logger.log(`   🔮 Gazing into the Traffic Simulator (${points.length} scenarios found)...`);
+  Logger.log(`    🔮 Gazing into the Traffic Simulator (${points.length} scenarios found)...`);
 
   for (const point of points) {
     const roas = point.targetRoas;
@@ -179,35 +144,30 @@ function processSingleCampaign(row, sheetObj) {
   }
 
   if (regressionData.length < 3) {
-    Logger.log("   👻 Ghost Town: Not enough data points to build a model.");
+    Logger.log("    👻 Ghost Town: Not enough data points to build a model.");
     return;
   }
 
-  // --- STEP 3: RUN THE MATHS ---
   const coeffs = fitQuadratic(regressionData);
   const rSquared = calculateRSquared(regressionData, coeffs);
   
   if (rSquared < CONFIG.minRSquared) {
-    Logger.log(`   🎲 Too Chaotic: Data correlation is weak (R² ${rSquared.toFixed(2)}). Skipping for safety.`);
+    Logger.log(`    🎲 Too Chaotic: Data correlation is weak (R² ${rSquared.toFixed(2)}). Skipping for safety.`);
     return;
   }
 
   if (coeffs.a >= 0) {
-    Logger.log("   🎢 U-Curve Detected: Google thinks profit increases infinitely. I doubt that. Skipping.");
+    Logger.log("    🎢 U-Curve Detected: Google thinks profit increases infinitely. I doubt that. Skipping.");
     return;
   }
 
-  // Calculate Peak
   const optimalRoasRaw = -coeffs.b / (2 * coeffs.a);
   const expProfit = (coeffs.a * (optimalRoasRaw * optimalRoasRaw)) + (coeffs.b * optimalRoasRaw) + coeffs.c;
-
-  // --- STEP 4: APPLY GUARDRAILS ---
   const finalRoas = applyGuardrails(optimalRoasRaw, currentRoas);
 
-  Logger.log(`   💎 Sweet Spot Found: ${optimalRoasRaw.toFixed(2)}`);
-  Logger.log(`   🛡️ Safety Shields:   ${finalRoas.toFixed(2)} (Guarded)`);
+  Logger.log(`    💎 Sweet Spot Found: ${optimalRoasRaw.toFixed(2)}`);
+  Logger.log(`    🛡️ Safety Shields:   ${finalRoas.toFixed(2)} (Guarded)`);
   
-  // --- STEP 5: DECIDE ACTION ---
   let actionTaken = "READ ONLY";
   if (CONFIG.updateCampaigns) {
     if (Math.abs(finalRoas - currentRoas) > 0.01) {
@@ -217,10 +177,8 @@ function processSingleCampaign(row, sheetObj) {
     }
   }
 
-  // --- STEP 6: FETCH HISTORY ---
   const stats = getLastWeekStats(campaignId);
 
-  // --- STEP 7: LOG TO SPREADSHEET ---
   logToSpreadsheet(sheetObj, {
     timestamp: new Date(),
     campaign: campaignName,
@@ -235,20 +193,45 @@ function processSingleCampaign(row, sheetObj) {
     action: actionTaken       
   });
 
-  // --- STEP 8: APPLY CHANGES ---
   if (actionTaken === "UPDATED") {
-     applyTargetRoas(campaignId, currentSettings, finalRoas);
+       applyTargetRoas(campaignId, currentSettings, finalRoas);
   } else if (actionTaken === "NO CHANGE") {
-     Logger.log(`   ✅ Status: We are already perfect. No change needed.`);
+       Logger.log(`    ✅ Status: We are already perfect. No change needed.`);
   } else {
-     Logger.log(`   👀 Status: Read Only Mode.`);
+       Logger.log(`    👀 Status: Read Only Mode.`);
   }
 }
 
 /**
- * ==============================================================================
+ * EMAIL TOOLS
+ */
+
+function sendFinalEmail(fullLog, statusSummary) {
+  const accountName = AdsApp.currentAccount().getName();
+  const accountId = AdsApp.currentAccount().getCustomerId();
+  const recipient = CONFIG.emailAddresses;
+
+  if (!recipient || recipient === "") {
+    return; // No email configured
+  }
+
+  const subject = `Google Ads Script Log: ${accountName} (${statusSummary})`;
+  const body = `Automated ROAS Optimisation Script has finished running.\n\n` +
+               `Account: ${accountName} (${accountId})\n` +
+               `Spreadsheet: ${CONFIG.spreadsheetUrl}\n\n` +
+               `--- EXECUTION LOGS ---\n\n${fullLog}`;
+
+  try {
+    MailApp.sendEmail(recipient, subject, body);
+    // Use the stored original logger to avoid infinite loops
+    // Note: Logger was redefined in main(), so we use original logic if needed
+  } catch (e) {
+    // Fail silently in logs to avoid disrupting the main flow
+  }
+}
+
+/**
  * SPREADSHEET & REPORTING TOOLS
- * ==============================================================================
  */
 
 function ensureSpreadsheet() {
@@ -273,36 +256,30 @@ function ensureSpreadsheet() {
     
     ss = SpreadsheetApp.create(fileName);
     
-    // SHARE AND EMAIL
     const emailStr = CONFIG.emailAddresses;
     if (emailStr && emailStr.length > 0) {
-      // 1. Grant Access
-      // Clean up the string and split by commas to handle multiple people
       const editors = emailStr.split(",").map(function(e) { return e.trim(); });
       
       try {
         ss.addEditors(editors);
-        Logger.log(`   🤝 Granted access to: ${editors.join(", ")}`);
+        Logger.log(`    🤝 Granted access to: ${editors.join(", ")}`);
       } catch (e) {
-        Logger.log(`   ⚠️ Failed to grant access: ${e.toString()}`);
+        Logger.log(`    ⚠️ Failed to grant access: ${e.toString()}`);
       }
 
-      // 2. Send Notification
       MailApp.sendEmail(CONFIG.emailAddresses, "New ROAS Regression Log", 
         `Fresh hot spreadsheet created for ${accountName}.\n\nAccess it here: ${ss.getUrl()}`
       );
     } else {
-        Logger.log("   ⚠️ No email provided. You must find the sheet URL in these logs.");
+        Logger.log("    ⚠️ No email provided. You must find the sheet URL in these logs.");
     }
   }
 
-  // 1. Dashboard
   let dashSheet = ss.getSheetByName("Dashboard");
   if (!dashSheet) {
     dashSheet = ss.insertSheet("Dashboard", 0);
   }
 
-  // 2. Data Updates
   const dataSheet = getOrCreateSheet(ss, "Historical Simulation Data", [
     "Timestamp", "Campaign", "Start Date", "End Date", 
     "Current Target ROAS", 
@@ -311,7 +288,6 @@ function ensureSpreadsheet() {
     "Optimal ROAS", "Predicted Profit"
   ]);
   
-  // 3. Performance Log
   const perfSheet = getOrCreateSheet(ss, "Weekly Performance Log", [
     "Timestamp", "Campaign", "Start Date", "End Date", 
     "Action Taken", 
@@ -352,15 +328,12 @@ function polishSpreadsheet(sheetObj) {
     const lastCol = sheet.getLastColumn();
     const maxCols = sheet.getMaxColumns();
 
-    // Branding
     const headerRange = sheet.getRange(1, 1, 1, lastCol);
     headerRange.setBackground("#C33B48").setFontColor("white").setFontWeight("bold").setFontFamily("Manrope");
 
     if (lastRow > 1) {
       const fullRange = sheet.getRange(2, 1, lastRow - 1, lastCol);
       fullRange.setFontFamily("Manrope");
-
-      // Column widths
       sheet.setColumnWidth(1, 200); 
       sheet.setColumnWidth(2, 500); 
 
@@ -375,28 +348,25 @@ function polishSpreadsheet(sheetObj) {
           colRange.setNumberFormat(currencyFormat);
         }
       }
-
       if (sheet.getFilter()) sheet.getFilter().remove();
       sheet.getDataRange().createFilter();
     }
 
     if (sheet.getName() === "Historical Simulation Data") {
-       sheet.hideColumns(6); // Hide Raw Points
-       try { sheet.hideColumns(7, 4); } catch(e){} // Hide Coeffs
+       sheet.hideColumns(6);
+       try { sheet.hideColumns(7, 4); } catch(e){}
     }
 
     if (maxCols > lastCol) {
       try { sheet.deleteColumns(lastCol + 1, maxCols - lastCol); } catch(e){}
     }
   }
-  
   updateInteractiveDashboard(sheetObj);
 }
 
 function updateInteractiveDashboard(sheetObj) {
   const dash = sheetObj.dashSheet;
   const perfSheet = sheetObj.perfSheet;
-  
   if (perfSheet.getLastRow() < 2) return;
 
   dash.getRange("A1").setValue("Select Campaign:").setFontWeight("bold").setFontSize(16).setFontColor("#C33B48").setFontFamily("Manrope");
@@ -407,10 +377,7 @@ function updateInteractiveDashboard(sheetObj) {
   dash.setColumnWidth(2, 450); 
 
   const campaignsRange = perfSheet.getRange(2, 2, perfSheet.getLastRow() - 1, 1);
-  const rule = SpreadsheetApp.newDataValidation()
-    .requireValueInRange(campaignsRange)
-    .setAllowInvalid(false)
-    .build();
+  const rule = SpreadsheetApp.newDataValidation().requireValueInRange(campaignsRange).setAllowInvalid(false).build();
   dropdownCell.setDataValidation(rule);
 
   if (dropdownCell.getValue() === "") {
@@ -418,15 +385,11 @@ function updateInteractiveDashboard(sheetObj) {
     dropdownCell.setValue(firstCampaign);
   }
 
-  // Adjusted Query for new Column Layout in Perf Sheet
-  // Current Profit is Col L (12), Predicted Profit is Col M (13)
   const queryFormula = `=QUERY('Weekly Performance Log'!A:N, "SELECT A, L, M WHERE B = '"&B1&"' ORDER BY A LABEL L 'Actual Profit', M 'Predicted Profit'", 1)`;
   dash.getRange("A20").setFormula(queryFormula); 
   
   const charts = dash.getCharts();
-  for (let i = 0; i < charts.length; i++) {
-    dash.removeChart(charts[i]);
-  }
+  for (let i = 0; i < charts.length; i++) { dash.removeChart(charts[i]); }
 
   const chartBuilder = dash.newChart()
     .setChartType(Charts.ChartType.LINE)
@@ -441,11 +404,6 @@ function updateInteractiveDashboard(sheetObj) {
     .setOption('legend', {position: 'top'});
 
   dash.insertChart(chartBuilder.build());
-
-  const maxCols = dash.getMaxColumns();
-  if (maxCols > 13) {
-    try { dash.deleteColumns(14, maxCols - 13); } catch(e) {}
-  }
 }
 
 function logToSpreadsheet(sheetObj, metrics) {
@@ -463,22 +421,18 @@ function logToSpreadsheet(sheetObj, metrics) {
 
   const rawString = metrics.rawPoints.map(p => Object.keys(p).map(key => `${key}=${p[key]}`).join(", ")).join(" | ");
 
-  // Actual Profit
   const actualProfit = (metrics.stats.revenue * CONFIG.conversionValueMultiplier) - metrics.stats.cost;
   const predictedProfit = metrics.expProfit;
   const profitDiff = predictedProfit - actualProfit;
 
-  // Derive Predicted Metrics based on Optimal ROAS
   let predictedSpend = 0;
   let predictedRevenue = 0;
-  
   const effectiveMargin = (metrics.optimalRoas * CONFIG.conversionValueMultiplier) - 1;
   if (effectiveMargin > 0) {
       predictedSpend = predictedProfit / effectiveMargin;
       predictedRevenue = predictedSpend * metrics.optimalRoas;
   }
 
-  // 1. Data Sheet (Historical Simulation Data)
   sheetObj.dataSheet.appendRow([
     Utilities.formatDate(new Date(), tz, "dd-MMM-yyyy HH:mm"),
     metrics.campaign,
@@ -494,64 +448,45 @@ function logToSpreadsheet(sheetObj, metrics) {
     metrics.expProfit
   ]);
 
-  // 2. Performance Sheet (Weekly Performance Log)
   sheetObj.perfSheet.appendRow([
     Utilities.formatDate(new Date(), tz, "dd-MMM-yyyy HH:mm"),
     metrics.campaign,
     Utilities.formatDate(perfStart, tz, format),
     Utilities.formatDate(perfEnd, tz, format),
-    metrics.action,                 
-    metrics.stats.cost,          // Actual Spend
-    predictedSpend,              // Predicted Spend
-    metrics.stats.revenue,       // Actual Revenue
-    predictedRevenue,            // Predicted Revenue
-    metrics.stats.roas,          // Actual ROAS
-    metrics.finalRoas,           // Optimal ROAS (Guarded)
-    actualProfit,                // Actual Profit
-    predictedProfit,             // Predicted Profit
-    profitDiff                   // Diff
+    metrics.action,                  
+    metrics.stats.cost,          
+    predictedSpend,              
+    metrics.stats.revenue,       
+    predictedRevenue,            
+    metrics.stats.roas,          
+    metrics.finalRoas,           
+    actualProfit,                
+    predictedProfit,             
+    profitDiff                   
   ]);
 }
 
 function getLastWeekStats(campaignId) {
-  const query = `
-    SELECT 
-      metrics.cost_micros, 
-      metrics.conversions_value
-    FROM campaign 
-    WHERE 
-      campaign.id = ${campaignId} 
-      AND segments.date DURING LAST_WEEK_MON_SUN
-  `;
-
+  const query = `SELECT metrics.cost_micros, metrics.conversions_value FROM campaign WHERE campaign.id = ${campaignId} AND segments.date DURING LAST_WEEK_MON_SUN`;
   const rows = AdsApp.search(query);
   if (rows.hasNext()) {
     const row = rows.next();
     const cost = row.metrics.costMicros / 1000000;
     const revenue = row.metrics.conversionsValue;
     const roas = cost > 0 ? (revenue / cost) : 0;
-    
     return { cost, revenue, roas };
   }
   return { cost: 0, revenue: 0, roas: 0 };
 }
 
-/**
- * ==============================================================================
- * MATHS & API HELPERS
- * ==============================================================================
- */
-
 function getCurrentRoasSettings(campaignId) {
   const campaignIter = AdsApp.campaigns().withIds([campaignId]).get();
   if (!campaignIter.hasNext()) return null;
   const campaign = campaignIter.next();
-  
   let roas = 0;
   let type = campaign.getBiddingStrategyType();
   let isPortfolio = false;
   let portfolioId = null;
-
   const portfolioStrategy = campaign.bidding().getStrategy();
 
   if (portfolioStrategy) {
@@ -573,7 +508,6 @@ function getCurrentRoasSettings(campaignId) {
 function applyGuardrails(optimal, current) {
   let target = optimal;
   target = Math.max(CONFIG.guardrails.minRoasLimit, Math.min(CONFIG.guardrails.maxRoasLimit, target));
-  
   if (current > 0) {
     const maxChange = CONFIG.guardrails.maxRoasChange;
     target = Math.max(current - maxChange, Math.min(current + maxChange, target));
@@ -615,15 +549,15 @@ function logHeader(t) { Logger.log("\n" + "=".repeat(40) + "\n" + t + "\n" + "="
 
 function applyTargetRoas(campaignId, settings, roas) {
   if (settings.isPortfolio) {
-    Logger.log(`   🏗️ Action: Updating Portfolio Strategy...`);
+    Logger.log(`    🏗️ Action: Updating Portfolio Strategy...`);
     updatePortfolioViaMutate(settings.portfolioId, settings.type, roas);
   } else {
     const campaign = AdsApp.campaigns().withIds([campaignId]).get().next();
     if (['TARGET_ROAS', 'MAXIMIZE_CONVERSION_VALUE'].indexOf(settings.type) > -1) {
       campaign.bidding().setTargetRoas(roas);
-      Logger.log(`   🏗️ Action: Standard Campaign updated to ${roas}`);
+      Logger.log(`    🏗️ Action: Standard Campaign updated to ${roas}`);
     } else {
-      Logger.log(`   ⚠️ Error: Strategy '${settings.type}' cannot be updated directly.`);
+      Logger.log(`    ⚠️ Error: Strategy '${settings.type}' cannot be updated directly.`);
     }
   }
 }
@@ -640,18 +574,18 @@ function updatePortfolioViaMutate(strategyId, type, roas) {
     innerOp.update.maximizeConversionValue = { "targetRoas": roas };
     innerOp.update_mask = "maximize_conversion_value.target_roas";
   } else {
-    Logger.log(`   ⚠️ Error: Unsupported Portfolio Type: ${type}`);
+    Logger.log(`    ⚠️ Error: Unsupported Portfolio Type: ${type}`);
     return;
   }
 
   try {
     const response = AdsApp.mutate({ "bidding_strategy_operation": innerOp });
     if (response.isSuccessful()) {
-       Logger.log(`   ✅ Success: Portfolio updated to ${roas}`);
+       Logger.log(`    ✅ Success: Portfolio updated to ${roas}`);
     } else {
-       Logger.log(`   ❌ API Failure: ${response.getErrorMessages().join(", ")}`);
+       Logger.log(`    ❌ API Failure: ${response.getErrorMessages().join(", ")}`);
     }
   } catch (e) {
-    Logger.log(`   ❌ Critical Error: ${e.toString()}`);
+    Logger.log(`    ❌ Critical Error: ${e.toString()}`);
   }
 }
