@@ -8,7 +8,7 @@
  * This script optimises your campaigns for Maximum Profit (rather than just Revenue).
  * 1. It pulls historical data from Google's "Traffic Simulator".
  * 2. It uses quadratic regression to model the relationship between ROAS and Profit.
- * 3. It identifies the specific ROAS target where profit is maximized.
+ * 3. It identifies the specific ROAS target where profit is maximised.
  * 4. It logs the analysis to a spreadsheet and updates the campaign (if enabled).
  * 5. It emails the full execution log to the specified users.
  * 
