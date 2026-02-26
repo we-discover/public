@@ -1,6 +1,6 @@
 /**
  * ==============================================================================
- * AUTOMATED ROAS OPTIMISATION SCRIPT (QUADRATIC REGRESSION)
+ * WEDISCOVER AUTOMATED ROAS OPTIMISATION SCRIPT (QUADRATIC REGRESSION)
  * ==============================================================================
  *
  * WHAT DOES THIS SCRIPT DO?
@@ -11,6 +11,8 @@
  * 3. It identifies the specific ROAS target where profit is maximized.
  * 4. It logs the analysis to a spreadsheet and updates the campaign (if enabled).
  * 5. It emails the full execution log to the specified users.
+ * 
+ * AUTHOR: Nathan Ifill (@nathanifill)
  *
  * ==============================================================================
  * CONFIGURATION
@@ -19,28 +21,39 @@
 
 const CONFIG = {
   // 1. CAMPAIGN SELECTION
+  // Leave this as [] to analyse ALL campaigns using Target ROAS. 
+  // To limit the script to specific campaigns, add their names in quotes like this: ["Brand_Search", "Shopping_UK"].
   campaignNames: [], 
   
   // 2. VALUE ADJUSTMENT
+  // If your conversion value doesn't account for profit margins, you can adjust it here.
+  // For example, 0.5 would mean you keep 50% of the revenue as gross profit. 1.0 means use the value as-is.
   conversionValueMultiplier: 1.0,
 
-  // 3. DATA QUALITY CHECK
+  // 3. DATA QUALITY CHECK (R-Squared)
+  // This measures how "reliable" the data is on a scale of 0 to 1. 
+  // 0.5 is the minimum recommended; if the data is too messy or unpredictable, the script will skip the campaign.
   minRSquared: 0.5,
   
   // 4. SAFETY GUARDRAILS
+  // These settings prevent the script from making drastic or risky changes.
   guardrails: {
-    maxRoasChange: 0.2, 
-    minRoasLimit: 0.8,  
-    maxRoasLimit: 4.0  
+    maxRoasChange: 0.2,  // The maximum amount the ROAS target can shift in one run (e.g., 2.0 to 2.2).
+    minRoasLimit: 0.8,   // The absolute lowest ROAS target the script is allowed to set.
+    maxRoasLimit: 4.0    // The absolute highest ROAS target the script is allowed to set.
   },
 
   // 5. REPORTING (The Spreadsheet)
+  // Paste the full URL of a Google Sheet here to log results. 
+  // If left blank, the script will create a brand new sheet for you and email you the link.
   spreadsheetUrl: "", 
   
-  // Who should get the email? (They will also need to be given Edit access to the sheet).
+  // Enter the email addresses (separated by commas) that should receive the results and access to the sheet.
   emailAddresses: "",
 
   // 6. ACTION MODE
+  // If 'false', the script will only "pretend" to work, calculating everything and logging it to the sheet without changing your account.
+  // Set this to 'true' only when you are happy with the recommendations and want the script to update your live bids.
   updateCampaigns: false
 };
 
