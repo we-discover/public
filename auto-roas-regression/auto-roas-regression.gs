@@ -1,6 +1,6 @@
 /**
  * ==============================================================================
- * AUTOMATED ROAS OPTIMISATION SCRIPT (QUADRATIC REGRESSION)
+ * WEDISCOVER AUTOMATED ROAS OPTIMISATION SCRIPT (QUADRATIC REGRESSION)
  * ==============================================================================
  *
  * WHAT DOES THIS SCRIPT DO?
@@ -8,9 +8,11 @@
  * This script optimises your campaigns for Maximum Profit (rather than just Revenue).
  * 1. It pulls historical data from Google's "Traffic Simulator".
  * 2. It uses quadratic regression to model the relationship between ROAS and Profit.
- * 3. It identifies the specific ROAS target where profit is maximized.
+ * 3. It identifies the specific ROAS target where profit is maximised.
  * 4. It logs the analysis to a spreadsheet and updates the campaign (if enabled).
  * 5. It emails the full execution log to the specified users.
+ *
+ * * AUTHOR: Nathan Ifill (@nathanifill)
  *
  * ==============================================================================
  * CONFIGURATION
@@ -19,28 +21,39 @@
 
 const CONFIG = {
   // 1. CAMPAIGN SELECTION
+  // Leave this as [] to analyse ALL campaigns using Target ROAS. 
+  // To limit the script to specific campaigns, add their names in quotes like this: ["Brand_Search", "Shopping_UK"].
   campaignNames: [], 
   
   // 2. VALUE ADJUSTMENT
+  // If your conversion value doesn't account for profit margins, you can adjust it here.
+  // For example, 0.5 would mean you keep 50% of the revenue as gross profit. 1.0 means use the value as-is.
   conversionValueMultiplier: 1.0,
 
-  // 3. DATA QUALITY CHECK
+  // 3. DATA QUALITY CHECK (R-Squared)
+  // This measures how "reliable" the data is on a scale of 0 to 1. 
+  // 0.5 is the minimum recommended; if the data is too messy or unpredictable, the script will skip the campaign.
   minRSquared: 0.5,
   
   // 4. SAFETY GUARDRAILS
+  // These settings prevent the script from making drastic or risky changes.
   guardrails: {
-    maxRoasChange: 0.2, 
-    minRoasLimit: 0.8,  
-    maxRoasLimit: 4.0  
+    maxRoasChange: 0.2,  // The maximum amount the ROAS target can shift in one run (e.g., 2.0 to 2.2).
+    minRoasLimit: 0.8,   // The absolute lowest ROAS target the script is allowed to set.
+    maxRoasLimit: 4.0    // The absolute highest ROAS target the script is allowed to set.
   },
 
   // 5. REPORTING (The Spreadsheet)
+  // Paste the full URL of a Google Sheet here to log results. 
+  // If left blank, the script will create a brand new sheet for you and email you the link.
   spreadsheetUrl: "", 
   
-  // Who should get the email? (They will also need to be given Edit access to the sheet).
+  // Enter the email addresses (separated by commas) that should receive the results and access to the sheet.
   emailAddresses: "",
 
   // 6. ACTION MODE
+  // If 'false', the script will only "pretend" to work, calculating everything and logging it to the sheet without changing your account.
+  // Set this to 'true' only when you are happy with the recommendations and want the script to update your live bids.
   updateCampaigns: false
 };
 
@@ -84,6 +97,7 @@ function main() {
 
   const report = AdsApp.search(query);
   let processedCount = 0;
+  let skippedCount = 0;
 
   while (report.hasNext()) {
     const row = report.next();
@@ -93,8 +107,14 @@ function main() {
       continue; 
     }
 
-    processSingleCampaign(row, sheetObj);
-    processedCount++;
+    // --- FAULT TOLERANCE ADDED HERE ---
+    try {
+      processSingleCampaign(row, sheetObj);
+      processedCount++;
+    } catch (e) {
+      Logger.log(`⚠️ SKIPPING "${currentName}": ${e.message}`);
+      skippedCount++;
+    }
   }
 
   // --- STEP 2: TIDY UP ---
@@ -103,7 +123,7 @@ function main() {
   if (processedCount === 0) {
     Logger.log("\n🤷‍♂️ No eligible campaigns found. The simulator is silent.");
   } else {
-    logHeader(`🏁 MISSION COMPLETE. Processed ${processedCount} Campaign(s).`);
+    logHeader(`🏁 MISSION COMPLETE. Processed ${processedCount} | Skipped ${skippedCount}`);
   }
 
   // --- STEP 3: SEND LOGS VIA EMAIL ---
@@ -122,8 +142,8 @@ function processSingleCampaign(row, sheetObj) {
 
   const currentSettings = getCurrentRoasSettings(campaignId);
   if (!currentSettings) {
-    Logger.log(`🚫 Abort: Couldn't find current bidding settings.`);
-    return;
+    // This triggers the skip logic in the main loop
+    throw new Error("Could not access bidding settings. (Likely restricted by a higher-level MCC)");
   }
   
   const currentRoas = currentSettings.roas;
@@ -223,8 +243,6 @@ function sendFinalEmail(fullLog, statusSummary) {
 
   try {
     MailApp.sendEmail(recipient, subject, body);
-    // Use the stored original logger to avoid infinite loops
-    // Note: Logger was redefined in main(), so we use original logic if needed
   } catch (e) {
     // Fail silently in logs to avoid disrupting the main flow
   }
@@ -453,7 +471,7 @@ function logToSpreadsheet(sheetObj, metrics) {
     metrics.campaign,
     Utilities.formatDate(perfStart, tz, format),
     Utilities.formatDate(perfEnd, tz, format),
-    metrics.action,                  
+    metrics.action,                      
     metrics.stats.cost,          
     predictedSpend,              
     metrics.stats.revenue,       
@@ -462,7 +480,7 @@ function logToSpreadsheet(sheetObj, metrics) {
     metrics.finalRoas,           
     actualProfit,                
     predictedProfit,             
-    profitDiff                   
+    profitDiff                    
   ]);
 }
 
@@ -480,29 +498,36 @@ function getLastWeekStats(campaignId) {
 }
 
 function getCurrentRoasSettings(campaignId) {
-  const campaignIter = AdsApp.campaigns().withIds([campaignId]).get();
-  if (!campaignIter.hasNext()) return null;
-  const campaign = campaignIter.next();
-  let roas = 0;
-  let type = campaign.getBiddingStrategyType();
-  let isPortfolio = false;
-  let portfolioId = null;
-  const portfolioStrategy = campaign.bidding().getStrategy();
+  try {
+    const campaignIter = AdsApp.campaigns().withIds([campaignId]).get();
+    if (!campaignIter.hasNext()) return null;
+    const campaign = campaignIter.next();
+    let roas = 0;
+    let type = campaign.getBiddingStrategyType();
+    let isPortfolio = false;
+    let portfolioId = null;
+    const portfolioStrategy = campaign.bidding().getStrategy();
 
-  if (portfolioStrategy) {
-    isPortfolio = true;
-    portfolioId = portfolioStrategy.getId();
-    const query = `SELECT bidding_strategy.type, bidding_strategy.target_roas.target_roas FROM bidding_strategy WHERE bidding_strategy.id = ${portfolioId}`;
-    const rows = AdsApp.search(query);
-    if (rows.hasNext()) {
-      const row = rows.next();
-      type = row.biddingStrategy.type;
-      if (row.biddingStrategy.targetRoas) roas = row.biddingStrategy.targetRoas.targetRoas;
+    if (portfolioStrategy) {
+      isPortfolio = true;
+      portfolioId = portfolioStrategy.getId();
+      const query = `SELECT bidding_strategy.type, bidding_strategy.target_roas.target_roas FROM bidding_strategy WHERE bidding_strategy.id = ${portfolioId}`;
+      const rows = AdsApp.search(query);
+      if (rows.hasNext()) {
+        const row = rows.next();
+        type = row.biddingStrategy.type;
+        if (row.biddingStrategy.targetRoas) roas = row.biddingStrategy.targetRoas.targetRoas;
+      } else {
+        // If we have a strategy but can't read it, it's likely an MCC permission issue
+        return null;
+      }
+    } else {
+      roas = campaign.bidding().getTargetRoas() || 0;
     }
-  } else {
-    roas = campaign.bidding().getTargetRoas() || 0;
+    return { roas, type, isPortfolio, portfolioId };
+  } catch (e) {
+    return null;
   }
-  return { roas, type, isPortfolio, portfolioId };
 }
 
 function applyGuardrails(optimal, current) {
