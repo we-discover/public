@@ -29,11 +29,18 @@ const CONFIG = {
   // If you leave it empty like [], the script will look at every eligible campaign.
   campaignNames: [], 
   
-  // 2. TRUE VALUE OF A SALE (MULTIPLIER)
-  // This setting tells the script what a sale is really worth to your business after all costs. 
-  // For example, if a £100 sale results in £40 profit, that is a 40 per cent margin. 
-  // You would set this number to 1.4.
-  // The script uses this to work out your true profit rather than just total sales revenue.
+  // 2. LIFETIME VALUE (LTV) MULTIPLIER
+  // This setting adjusts the value of a sale to account for future repeat 
+  // purchases. It tells the script what a customer is actually worth in 
+  // the long run, rather than just their one-off checkout total.
+  //
+  // - 1.0 = DEFAULT. Use this if you only want to track the initial sale.
+  // - 1.4 = LTV BOOST. For this client, every £100 spent at checkout is 
+  //         worth £140 in total lifetime value. We use 1.4 to optimise 
+  //         for this "True Value".
+  //
+  // Note: This is a multiplier, not a margin calculation. To increase 
+  // the value by 40%, use 1.4. (Using 0.4 would reduce the value by 60%).
   conversionValueMultiplier: 1.0,
 
   // 3. CONFIDENCE SCORE (DATA QUALITY)
@@ -138,8 +145,14 @@ function main() {
       continue; 
     }
 
-    processSingleCampaign(row, sheetObj);
-    processedCount++;
+    // --- FAULT TOLERANCE ADDED HERE ---
+    try {
+      processSingleCampaign(row, sheetObj);
+      processedCount++;
+    } catch (e) {
+      Logger.log(`⚠️ SKIPPING "${currentName}": ${e.message}`);
+      skippedCount++;
+    }
   }
 
   // Formatting and rebuilding the interactive dashboard.
