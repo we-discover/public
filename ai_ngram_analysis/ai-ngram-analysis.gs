@@ -8,8 +8,8 @@
  *               accounts (1M+ clicks/month, 50M+ impressions/month).
  *
  *  License:     https://github.com/we-discover/public/blob/master/LICENSE
- *  Version:     3.10.5
- *  Released:    2026-05-06
+ *  Version:     3.12.0
+ *  Released:    2026-05-11
  *  Contact:     scripts@we-discover.com
  *
  *  Credits:     Original n-gram concept and structure by Brainlabs Digital
@@ -17,7 +17,6 @@
  *               GAQL migration by Nils Rooijmans (2022, 2025).
  *               Shared set access fix by Arjan Schoorl / Flowboost (2025).
  *               Rewritten for ES6, GAQL and scale by WeDiscover (2026).
- *
  */
 
 
@@ -37,66 +36,69 @@ const CONFIG = {
 
   // -- Currency ----------------------------------------------------------------
   // Type your currency symbol directly. £ for GBP, $ for USD, € for EUR.
-  // Whatever you paste in here will appear in the Cost columns in the sheet.
   currencySymbol: '£',
 
   // -- Campaign filter ---------------------------------------------------------
   // If you only want to look at certain campaigns, type part of their name here.
-  // For example, typing 'Brand' will only include campaigns with 'Brand' in the
-  // name. Leave both fields empty to include all campaigns.
+  // Leave both fields empty to include all campaigns.
   campaignNameContains:       '',  // only include campaigns whose name contains this
   campaignNameDoesNotContain: '',  // exclude campaigns whose name contains this
 
   // -- Paused campaigns and ad groups ------------------------------------------
-  // Set these to true to skip anything that is currently paused.
-  // Set to false if you want to include paused campaigns or ad groups too.
+  // Set to true to skip paused campaigns or ad groups.
   ignorePausedCampaigns: true,
   ignorePausedAdGroups:  true,
 
   // -- Negative keywords -------------------------------------------------------
-  // Set to true to filter out search queries that are already blocked by your
-  // negative keywords. This gives you a cleaner picture of what is actually
-  // reaching your ads. Recommended: true.
+  // Set to true to filter out queries already blocked by your negative keywords.
+  // Gives a cleaner picture of what is actually reaching your ads.
   checkNegatives: true,
 
   // -- Spreadsheet -------------------------------------------------------------
-  // Paste the full URL of the Google Sheet you want the results written to.
-  // The sheet must already exist and the account running this script must
-  // have edit access to it.
-  spreadsheetUrl: 'https://docs.google.com/spreadsheets/d/INSERT-SPREADSHEET-URL-HERE',
+  // Paste the full URL of the Google Sheet you want results written to.
+  // The sheet must already exist and this script must have edit access.
+  spreadsheetUrl: 'INSERT-SPREADSHEET-URL',
 
   // -- N-gram length -----------------------------------------------------------
-  // An n-gram is a sequence of words. A 1-gram is a single word like "shoes".
-  // A 2-gram is two words like "running shoes". A 3-gram is "womens running shoes".
-  // minNGramLength: the shortest phrase to look for (1 is a good starting point).
-  // maxNGramLength: the longest phrase to look for.
-  // On high-traffic accounts, keep maxNGramLength at 4 or below. Going higher
-  // uses a lot more memory and makes the script slower.
+  // An n-gram is a sequence of words. 1 = single words, 2 = two-word phrases, etc.
+  // On high-traffic accounts, keep maxNGramLength at 4 or below.
   minNGramLength: 1,
   maxNGramLength: 4,
 
   // -- Clear the spreadsheet on each run ---------------------------------------
   // Set to true to wipe the sheet clean before writing new results.
-  // Set to false to keep old results and add new ones on top (not recommended).
   clearSpreadsheet: true,
 
   // -- Thresholds --------------------------------------------------------------
-  // Any phrase that does not meet all of these minimums will be left out of
-  // the results. This stops the sheet from filling up with hundreds of phrases
-  // that got one click and are not worth your attention.
-  // On big accounts, a clicks threshold of 50 or higher is sensible.
+  // Phrases that do not meet all of these minimums are excluded from results.
+  // On big accounts, a clicks threshold of 50 or higher keeps the output focused.
   thresholds: {
     queryCount:   0,   // minimum number of search queries containing the phrase
     impressions:  0,   // minimum impressions
-    clicks:       50,  // minimum clicks -- raise this on high-volume accounts
+    clicks:       50,  // minimum clicks
     cost:         0,   // minimum spend
     conversions:  0,   // minimum conversions
   },
 
   // -- Time limit --------------------------------------------------------------
-  // Google Ads Scripts stop automatically after 30 minutes. This setting tells
-  // the script to stop early and save whatever it has found so far, rather than
-  // crashing with no output. 25 minutes is a safe value.
+  // Controls when the script stops mining and moves on to sheet finalisation
+  // and the AI summary. The full pipeline is:
+  //
+  //   mining  →  finaliseSheets (dedup + sort + format)  →  AI summary
+  //
+  // The script targets a total runtime of 25 minutes to stay well clear of
+  // Google's 30-minute hard kill. maxExecutionMinutes controls when mining
+  // stops; the AI section then uses whatever time remains up to that 25-minute
+  // ceiling. The AI time budget is calculated automatically -- you do not need
+  // to set it anywhere.
+  //
+  // Rule of thumb for this setting:
+  //   Without AI:             set to 25.
+  //   With AI, account mode:  set to 20.
+  //   With AI, full mode:     set to 15. Lower (e.g. 12) on very large accounts.
+  //
+  // If mining hits this limit before finishing, the sheet will be marked
+  // PARTIAL but all data processed up to that point is written correctly.
   maxExecutionMinutes: 25,
 };
 // =============================================================================
@@ -107,59 +109,31 @@ const CONFIG = {
 // =============================================================================
 // AI CONFIGURATION (OPTIONAL)
 //
-// This section controls the optional AI summary feature. If you just want
-// the data sheets and no AI analysis, leave apiKey blank and ignore this.
-//
 // ---- HOW TO GET A FREE API KEY (takes about two minutes) -------------------
 //   1. Go to https://aistudio.google.com in any browser.
-//   2. Sign in with any Google account -- the same one you use for Ads is fine.
+//   2. Sign in with any Google account.
 //   3. Click "Get API key" in the left-hand navigation panel.
 //   4. Click "Create API key", select any project, then click "Create".
-//   5. Copy the key that appears and paste it into the apiKey field below.
+//   5. Copy the key and paste it into the apiKey field below.
 //
 //   The free tier gives you 1,500 requests per day at no cost. No credit card
-//   is required. For reference, even the most data-heavy run of this script
-//   in 'full' mode (see below) uses around 40-50 requests, so the free tier
-//   is more than sufficient for regular monthly use.
-//
-// ---- WHAT THE AI DOES -------------------------------------------------------
-//   The script sends your n-gram data to Google's Gemini Flash model -- a fast,
-//   capable AI that is specifically designed for analytical tasks like this. It
-//   reads the phrase data, understands which phrases are driving conversions and
-//   which are wasting budget, and writes a plain-English summary with specific
-//   recommendations.
-//
-//   Your data is sent to Google's API servers to generate the summary, in the
-//   same way that you would paste data into a chat window. It is not used to
-//   train any AI model. See https://ai.google.dev/terms for Google's full terms.
+//   required. Even a heavy 'full' mode run uses around 40-50 requests.
 //
 // ---- TWO MODES: 'account' vs 'full' ----------------------------------------
 //   mode: 'account'
 //     One API call. Sends the top N phrases by clicks from each of the four
-//     account-level sheets (words, 2-grams, 3-grams, 4-grams). Fast, cheap,
-//     good for a quick overall read of the account. This is the default.
+//     account-level sheets. Fast, good for a quick read of the whole account.
 //
 //   mode: 'full'
-//     One API call per campaign, using ALL phrase data at both campaign and
-//     ad group level. Produces specific, actionable recommendations for every
-//     campaign and its ad groups. The number of API calls depends on how many
-//     campaigns you have and how large they are.
-//
-//     For large campaigns (lots of ad groups or very high search volume), the
-//     script automatically splits the data into chunks that each fit within the
-//     token budget, sends them separately, and then combines the responses into
-//     a single campaign section. You do not need to configure anything for this
-//     -- it is entirely automatic and works on any account.
-//
-//     On a typical account with 10-30 campaigns this takes 2-3 minutes of API
-//     time on top of the usual mining time, and costs well under $0.20 even on
-//     the paid tier. On the free tier it costs nothing.
+//     One API call per campaign using all phrase data at campaign and ad group
+//     level. Produces specific, actionable recommendations per campaign.
+//     For large campaigns the script splits data into chunks automatically and
+//     combines the responses -- no configuration needed.
 // =============================================================================
 const AI_CONFIG = {
 
   // -- API key -----------------------------------------------------------------
-  // Paste your Google AI Studio key here. Leave blank ('') to skip the AI
-  // summary entirely. The rest of the script runs exactly as normal either way.
+  // Paste your Google AI Studio key here. Leave blank ('') to skip AI entirely.
   apiKey: '',
 
   // -- Mode --------------------------------------------------------------------
@@ -168,156 +142,216 @@ const AI_CONFIG = {
   mode: 'account',
 
   // -- Token budget (full mode only) -------------------------------------------
-  // In 'full' mode, each API call is limited to this many tokens of input data.
-  // The script measures each campaign's data size automatically and splits it
-  // into chunks if needed -- you do not need to do anything manually.
-  //
-  // 60,000 is a good balance between giving the AI enough context to write
-  // specific recommendations and keeping each call fast and reliable. There is
-  // no strong reason to change this unless you are hitting timeout issues, in
-  // which case reducing it to 40,000 will produce more but smaller calls.
+  // Maximum tokens of input data per API call. 60,000 is a good balance between
+  // giving the AI enough context and keeping each call fast. No need to change
+  // this unless you are hitting timeout issues, in which case try 40,000.
   tokenBudget: 60000,
 
-  // -- Number of phrases per sheet (account mode only) -------------------------
-  // How many of the top phrases by clicks to include from each account-level
-  // sheet. 50 is a good default. In 'full' mode this setting is ignored --
-  // all rows are sent.
-  topN: 50,
+  // -- Number of phrases per sheet ---------------------------------------------
+  // Maximum rows sent to the AI per campaign-level and per ad-group-level sheet.
+  // Rows are selected by clicks descending, so the AI always sees the most
+  // impactful phrases first.
+  //
+  // In account mode: limits rows from each account-level sheet.
+  // In full mode: limits rows per campaign and per individual ad group.
+  //
+  // 100-150 is a good default for full mode. The AI does not improve with more
+  // rows -- beyond ~200 the prompt becomes too diffuse and quality drops.
+  topN: 100,
+
+  // -- Maximum chunks per campaign (full mode only) ----------------------------
+  // Hard cap on the number of API calls made per campaign. When the natural
+  // chunk count exceeds this limit, the script merges ad group rows into fewer,
+  // larger chunks rather than making more calls.
+  //
+  // 3 gives the AI enough context for a thorough analysis without spending
+  // excessive time on any single campaign. Set to 1 for fastest results.
+  maxChunksPerCampaign: 3,
+
+  // -- AI time budget ----------------------------------------------------------
+  // Calculated automatically from CONFIG.maxExecutionMinutes. The script targets
+  // a total runtime of 25 minutes; the AI section gets whatever is left after
+  // mining and sheet finalisation (typically 5-10 minutes on a 15-minute mine).
+  // You do not need to change this.
+  maxAiMinutes: (25 - CONFIG.maxExecutionMinutes),
+
+  // -- Model ------------------------------------------------------------------
+  // The Gemini model used for all AI calls.
+  //
+  // Free-tier limits observed (May 2026) -- these vary by account and change
+  // without notice, so check yours at https://aistudio.google.com/rate-limit:
+  //
+  //   gemini-3.1-flash-lite   15 RPM   500 RPD   <-- recommended default
+  //   gemini-2.5-flash-lite   10 RPM    20 RPD
+  //   gemini-3-flash           5 RPM    20 RPD
+  //   gemini-2.5-flash         5 RPM    20 RPD
+  //
+  // RPD (requests per day) is the binding constraint on the free tier.
+  // At 20 RPD you can exhaust your daily quota in a single full-mode run.
+  // gemini-3.1-flash-lite's 500 RPD means you can run across multiple accounts
+  // or re-run the same account without burning through the day's allowance.
+  //
+  // To switch models, change this string. Nothing else needs updating.
+  // Full model strings: https://ai.google.dev/gemini-api/docs/models
+  model: 'gemini-3.1-flash-lite',
+
+  // -- Delay between API calls -------------------------------------------------
+  // Milliseconds to pause after each Gemini call. This keeps requests well
+  // within the free-tier rate limit window regardless of which model is in use.
+  // Google does not publish free-tier RPM numbers in their docs -- they vary by
+  // model and can change without notice. The observed limit for gemini-3.1-flash-lite
+  // is 15 RPM, which works out to one request every 4 seconds minimum.
+  //
+  // 4,500ms gives a comfortable margin below that window. On a 20-campaign run
+  // this adds roughly 90 seconds to the AI section, which is well within the
+  // time budget. Set to 0 if you are on a paid tier with higher RPM limits.
+  callDelayMs: 4500,
 
   // -- Output sheet name -------------------------------------------------------
-  // The AI summary is written to a sheet with this name, placed at the front
-  // of the workbook. In 'full' mode this sheet contains the account summary
-  // followed by a section for each campaign.
   sheetName: 'AI Summary',
 
   // -- Account summary prompt --------------------------------------------------
   // The instruction sent to the AI for the account-level summary. The phrase
-  // data is appended automatically -- you only need to describe what you want
-  // the AI to do with it. You can rewrite this freely. The only rule is to
-  // keep it under a few hundred words; longer instructions do not improve the
-  // output and just waste your token allowance.
+  // data is appended automatically. Keep this under a few hundred words.
   accountPrompt: [
-    'You are a senior Google Ads strategist at WeDiscover in London.',
-    'You are sharp, no-nonsense, and have a dry sense of humour.',
-    'You are reviewing search query n-gram data to find clean, incremental growth.',
-    'Below is data from a Google Ads account at the word, 2-gram, 3-gram and 4-gram level.',
-    'Columns are: phrase, clicks, cost, conversions, conversion_value, roas.',
+    'You are a Lead Performance Consultant at WeDiscover, a London-based performance marketing agency. You are auditing paid search n-gram data on behalf of a client. The client\'s brand name is: {CLIENT_BRAND}.',
     '',
-    '1. DATA INTEGRITY RULES -- apply these before any analysis:',
-    '- Ignore phrases that are fragments of a brand name (e.g. function words',
-    '  like "on the", "for a", "in the" that only appear because they are part',
-    '  of a branded query). Focus on phrases with clear, standalone search intent.',
-    '- Do not suggest phrases as opportunities if they lack clear commercial intent.',
-    '- When citing any n-gram phrase in your response, ALWAYS wrap it in single',
-    '  quotes. Examples: \'gifts for her\', \'60th birthday gifts\', \'for him\'.',
-    '  Every single phrase you mention must have single quotes around it.',
-    '  This is the most important formatting rule.',
+    'WeDiscover manages the account -- WeDiscover is NOT the brand being advertised. Always refer to the client\'s customers as "{CLIENT_BRAND}\'s customers", never as "WeDiscover\'s customers".',
     '',
-    '2. FORMAT RULES -- follow these exactly:',
-    '- Start each section with a numbered heading on its own line, like: 1. TOP THEMES',
-    '- Write bullet points starting with "- " (a hyphen then a space)',
-    '- Use plain sentences for any introductory or closing text',
-    '- Do not use markdown, asterisks, hash symbols, or any other markup',
-    '- Do not use ALL CAPS except in section headings',
-    '- Use British English throughout (e.g. "optimise" not "optimize")',
-    '- Write at a Grade 8 reading level -- clear, direct, no jargon',
-    '- Make it engaging and slightly entertaining where the data supports it',
+    '1. UNDERSTANDING THE DATA:',
+    'CRITICAL -- read this carefully before writing anything.',
+    'The data contains N-GRAMS: words and phrases extracted from search queries, NOT keywords.',
+    'An n-gram like \'birthday gifts for her\' is a fragment that appeared inside one or more search queries.',
+    'It does NOT represent a keyword that exists in the account.',
+    'It tells you what THEMES and MODIFIERS appear in the searches that triggered the ads.',
     '',
-    '3. ANALYSIS SECTIONS:',
+    'THEREFORE:',
+    '- NEVER recommend adding an n-gram directly as a keyword. Instead, describe the THEME it represents.',
+    '- NEVER recommend match types for n-grams. Match types apply to keywords, not to search query fragments.',
+    '- When identifying keyword opportunities, describe the intent or theme the n-gram reveals, and suggest what TYPE of keyword could be built to capture or exclude that intent.',
+    '- When suggesting negatives, recommend the concept or theme, not the exact n-gram string.',
     '',
-    '1. TOP THEMES',
-    'Identify 3 high-intent search categories (excluding core brand traffic).',
-    'Name the supporting phrases and their ROAS.',
+    '2. TONE & STYLE:',
+    '- Be professional, insightful, and collaborative. Use \'We suggest\' or \'Consider\' rather than \'Do this\'.',
+    '- Maintain dry British wit, but keep it constructive.',
+    '- Use British English (e.g. \'optimise\', \'personalised\').',
+    `- ALWAYS use ${CONFIG.currencySymbol} signs for spend and value.`,
+    '- Format ROAS in ALL CAPS.',
+    '- Wrap every n-gram or phrase in \'single quotes\'.',
     '',
-    '2. INCREMENTAL OPPORTUNITIES',
-    'Name specific non-brand phrases with strong ROAS and meaningful volume.',
-    'For each one, say whether it is best suited to Exact match (to protect',
-    'high-margin volume and isolate performance) or Phrase match (to capture',
-    'variations and scale). Be specific -- name the phrases and the numbers.',
+    '3. JUDGING PERFORMANCE:',
+    '- Judge efficiency relative to what the account is actually achieving overall, not against any fixed threshold.',
+    '- A term with a low absolute ROAS is only wasteful if it is also low relative to its campaign context.',
+    '- A term with a ROAS that is below average but still profitable (positive return) should be noted as underperforming, not written off as waste.',
     '',
-    '3. WASTAGE',
-    'Identify non-brand phrases with high spend and ROAS below 0.8.',
-    'Name them, state their ROAS, and explain briefly why they are a problem.',
+    '4. STRUCTURE:',
+    'Use the exact numbered section headers below. Put a blank line between each section.',
     '',
-    '4. STRATEGIC NOTE',
-    'One sharp observation on how the account is positioned -- for example,',
-    'how brand vs. generic performance is shifting, or a structural pattern',
-    'worth the account manager knowing about.',
+    '1. PROFITABLE THEMES',
+    'Identify the 3-4 strongest themes across the account. For each, name the theme, give spend and ROAS, and say which type of campaign it is most relevant to (brand, shopping, or generic search). Be specific.',
     '',
-    'Keep the whole summary under 500 words.',
-    'Final reminder: every phrase you mention must be in single quotes.',
-    'Write ROAS in capitals throughout -- never write "roas" in lowercase.',
+    '2. BIGGEST OPPORTUNITIES',
+    'Based on the highest-performing n-gram themes, identify where the account could do more. Rules:',
+    '- Name the theme, its ROAS, and the specific reason it represents an opportunity.',
+    '- Do NOT suggest creating ad groups, campaigns, landing pages, keyword sets, or product groups -- you have no visibility of what already exists.',
+    '- Do NOT suggest building out themes, expanding coverage, or increasing investment -- these are generic, not insights.',
+    '- Do NOT recommend any action at all. This section identifies WHAT is working and WHY, based purely on the data. The reader decides what to do with it.',
+    '- Every sentence must reference a specific n-gram and its actual ROAS figure from the data.',
+    '',
+    '3. BIGGEST PROBLEMS',
+    'Identify the 3-4 themes with the largest combination of high spend AND low ROAS. Rules:',
+    '- Order by actual £ spend descending.',
+    '- For each, state spend, revenue, and ROAS.',
+    '- Do not flag terms spending under £20.',
+    '- Only flag a theme if its ROAS is more than 15% below the account average across all non-brand campaigns. Do not flag terms that are marginally below average -- only flag genuine, material underperformance.',
+    '- Do not calculate hypothetical benchmark-adjusted figures. State actual numbers only.',
+    '- Do NOT list, mention, or annotate themes that were considered but excluded.',
+    '',
+    '4. SUMMARY',
+    'One senior strategic observation that ties the above together. Be direct. If the account has a clear structural problem, name it.',
+    '',
+    'Keep the response under 450 words. Do not use markdown, asterisks, or hash symbols.',
   ].join('\n'),
 
   // -- Campaign prompt (full mode only) ----------------------------------------
-  // The instruction sent to the AI for each per-campaign analysis. Three
-  // placeholders are filled in automatically before the call is made:
+  // Placeholders filled in automatically before each call:
+  //   {CLIENT_BRAND} -- the client's brand name, detected from ad final URLs
   //   {CAMPAIGN}     -- the campaign name
-  //   {CHUNK_NOTE}   -- blank for single-chunk campaigns; for large campaigns
-  //                     that are split across multiple calls, this becomes
-  //                     something like "(part 2 of 4)" so the AI knows it is
-  //                     seeing a partial view and should not draw final
-  //                     conclusions from this chunk alone.
-  //   {AVG_ROAS}     -- the average ROAS for this campaign across all its data,
-  //                     giving the AI a benchmark to compare ad groups against.
-  //
-  // The phrase data (campaign rows and ad group rows) is appended automatically.
-  // Campaign columns: phrase, clicks, cost, conversions, conv_value, roas.
-  // Ad group columns: ad_group, phrase, clicks, cost, conversions, conv_value, roas.
+  //   {CHUNK_NOTE}   -- blank for single-chunk campaigns; "(part 2 of 4)" for splits
+  //   {AVG_ROAS}     -- the average ROAS for this campaign
   campaignPrompt: [
-    'You are a senior Google Ads strategist at WeDiscover in London.',
-    'You are sharp, no-nonsense, and have a dry sense of humour.',
-    'You are reviewing n-gram data for the campaign "{CAMPAIGN}" {CHUNK_NOTE}.',
+    'You are a Senior PPC Analyst at WeDiscover, a London-based performance marketing agency. You are auditing \'{CAMPAIGN}\' (Avg ROAS: {AVG_ROAS}) {CHUNK_NOTE} on behalf of the client {CLIENT_BRAND}.',
+    '',
+    'WeDiscover manages the account -- WeDiscover is NOT the brand being advertised. Always refer to the client\'s customers as "{CLIENT_BRAND}\'s customers", never as "WeDiscover\'s customers".',
+    '',
+    '1. UNDERSTANDING THE DATA:',
+    'CRITICAL -- read this carefully before writing anything.',
+    'The data contains N-GRAMS: words and phrases extracted from search queries, NOT keywords.',
+    'An n-gram like \'birthday gifts\' appeared inside searches that triggered this campaign\'s ads.',
+    'It does NOT represent a keyword that exists in the account.',
+    '',
+    'THEREFORE:',
+    '- NEVER recommend adding an n-gram directly as a keyword or as a negative keyword.',
+    '- NEVER recommend match types for n-grams.',
+    '- NEVER recommend creating, reviewing, or restructuring ad groups -- you have no visibility of the existing account structure.',
+    '- NEVER make assumptions about current ad copy, landing pages, or bidding strategy -- you can only see what the n-gram data shows.',
+    '- IGNORE single-word stop words such as \'for\', \'and\', \'the\', \'of\', \'in\', \'a\', \'to\', \'with\', \'uk\' when they appear alone as single-word n-grams. These carry no intent signal and are artefacts of the n-gram extraction process. Only use them when they appear as part of a longer phrase (e.g. \'gifts for him\').',
+    '- When suggesting negatives, describe the THEME or INTENT to block, not the exact n-gram string.',
+    '- When suggesting keyword expansion, describe what the n-gram reveals about user intent.',
+    '',
+    '2. CAMPAIGN CONTEXT:',
     'The average ROAS for this campaign is {AVG_ROAS}.',
-    'Columns for campaign-level data: phrase, clicks, cost, conversions, conv_value, roas.',
-    'Columns for ad group data: ad_group, phrase, clicks, cost, conversions, conv_value, roas.',
+    'Use this as the benchmark for all efficiency judgements -- not any fixed threshold.',
+    'A term is only wasteful if its ROAS is significantly below {AVG_ROAS} AND it is spending material budget. Do not flag terms that are mildly below average if the absolute spend is small or the ROAS is still positive.',
     '',
-    '1. DATA INTEGRITY RULES -- apply these before any analysis:',
-    '- Ignore phrases that are fragments of a brand name or function words with',
-    '  no standalone commercial intent (e.g. "on the", "for a", "in the").',
-    '- When citing any n-gram phrase in your response, ALWAYS wrap it in single',
-    '  quotes. Examples: \'birthday gifts for her\', \'for him\', \'sterling silver\'.',
-    '  Every single phrase you mention must have single quotes around it.',
-    '  This is the most important formatting rule.',
-    '- When suggesting opportunities, distinguish clearly between:',
-    '  Exact match -- use for high-margin phrases where you want to isolate and',
-    '  protect performance (specific, high-intent phrases with strong ROAS).',
-    '  Phrase match -- use for modifiers and intent signals where you want to',
-    '  capture variations and scale (good ROAS but benefits from broader reach).',
+    'Campaign type rules -- check the campaign name:',
+    '- Contains \'Brand\' or \'EX\': This is a brand campaign. You MUST rename Section 3 to \'LOWER-EFFICIENCY SEGMENTS\' (not DRAINAGE). Only include themes in this section where ROAS is below 3.0 AND spend is material. If a theme has a ROAS above 3.0 -- even if it is below the campaign average -- it must not appear in this section at all, not even with a note. A term returning 5x, 8x, or 12x ROAS is profitable and is not a problem. Suggested actions for brand campaigns should focus only on query-level refinement for genuine inefficiencies (e.g. misspellings, abbreviations with notably lower ROAS) -- not on excluding profitable brand-adjacent traffic.',
+    '- Contains \'DSA\': This is a Dynamic Search Ads campaign. There are no keywords to add or adjust. Suggestions must focus on search query THEMES to exclude via negatives. Do NOT suggest reviewing or improving the product feed or landing pages -- you cannot see these. Base all suggestions solely on which search query themes are converting and which are not.',
+    '- Contains \'PLA\' or \'Shopping\': Focus on search query themes and product group exclusions only.',
     '',
-    '2. FORMAT RULES -- follow these exactly:',
-    '- Start each section with a numbered heading on its own line, like: 1. CAMPAIGN OVERVIEW',
-    '- Write bullet points starting with "- " (a hyphen then a space)',
-    '- Use plain sentences for any introductory or closing text',
-    '- Do not use markdown, asterisks, hash symbols, or any other markup',
-    '- Do not use ALL CAPS except in section headings',
-    '- Use British English throughout (e.g. "optimise" not "optimize")',
-    '- Write at a Grade 8 reading level -- clear, direct, no jargon',
-    '- Make it engaging and slightly entertaining where the data supports it',
+    '3. WASTE CALCULATION:',
+    'When calculating waste in the DRAINAGE section, report actual spend and actual revenue only.',
+    'Do NOT calculate a hypothetical \'revenue at benchmark ROAS\' figure -- this implies a certainty of return that does not exist.',
+    'Instead, state: spend, actual ROAS, and actual revenue. The reader can judge the gap themselves.',
+    'Example: \'birthday\' spent £31.54 and returned £9.78 (ROAS 0.31) against a campaign average of {AVG_ROAS}.',
     '',
-    '3. ANALYSIS SECTIONS:',
+    '4. TONE & STYLE:',
+    '- Use British English throughout.',
+    `- ALWAYS use ${CONFIG.currencySymbol} signs for currency values.`,
+    '- Every n-gram or phrase mentioned MUST be wrapped in \'single quotes\'.',
+    '- Write ROAS in ALL CAPS.',
+    '- Use \'We suggest\' or \'Consider\' rather than \'Do this\'.',
     '',
-    '1. CAMPAIGN OVERVIEW',
-    'What is this campaign about and how is it performing overall?',
-    'Reference the average ROAS and call out any standout phrases.',
+    '5. STRUCTURE:',
+    'Use the exact numbered section headers below. Put a blank line between each section.',
     '',
-    '2. AD GROUP PERFORMANCE',
-    'Which ad groups are punching above their weight, and which are dragging',
-    'the campaign down? Compare against the average ROAS of {AVG_ROAS}.',
-    'Name the ad groups and the specific phrases driving performance.',
+    '1. PERFORMANCE OVERVIEW',
+    'How is the campaign performing against the {AVG_ROAS} ROAS benchmark overall? One short paragraph.',
     '',
-    '3. WASTAGE',
-    'Identify non-brand phrases with high spend and ROAS below 0.8.',
-    'Name them with their ROAS and explain why they are a problem.',
+    '2. WINNING SEGMENTS',
+    'Which n-gram themes are driving the strongest performance? What do they reveal about customer intent?',
     '',
-    '4. ACTIONS',
-    'Two or three specific things a PPC manager could act on this week.',
-    'For each action, say whether it involves Exact match or Phrase match,',
-    'and name the actual phrases involved.',
+    '3. DRAINAGE',
+    'Which themes are spending material budget significantly below the {AVG_ROAS} benchmark? Rules:',
+    '- ONLY include themes where ROAS is strictly below {AVG_ROAS}. If a theme has ROAS at or above {AVG_ROAS}, it must not appear here, even with a qualifying note.',
+    '- ONLY include themes where the ROAS gap from benchmark is at least 15% (e.g. on a 1.00 benchmark, only flag themes at 0.85 or below; on a 0.50 benchmark, only flag themes at 0.43 or below). Marginal underperformance is noise, not insight.',
+    '- Order by actual £ spend descending so the biggest problems appear first.',
+    '- For each, state: theme, spend, revenue, and ROAS.',
+    '- Do not flag themes where spend is under £10.',
+    '- Do not calculate hypothetical benchmark-adjusted waste figures.',
+    '- If fewer than 3 distinct themes qualify after applying all rules above, write: \'No material drainage themes identified in this data set.\' Do not pad with marginal or repeated examples.',
+    '- Do NOT list, mention, or annotate themes that were considered but excluded from this section. Only show themes that qualify. The reader does not need to see your exclusion logic.',
     '',
-    'Keep the whole analysis under 400 words.',
-    'Final reminder: every phrase you mention must be in single quotes.',
-    'Write ROAS in capitals throughout -- never write "roas" in lowercase.',
+    '4. SUGGESTED ACTIONS',
+    '3 specific, data-led suggestions grounded solely in what the n-grams reveal. Each must: (a) name the specific n-gram theme, (b) state the actual performance figures, (c) give a clear, specific recommendation. Rules:',
+    '- Do NOT use vague phrases like \'consider reviewing\', \'ensure alignment\', or \'investigate performance\' -- these are not actionable.',
+    '- Do NOT tell the analyst to look at their search terms report, their product feed, or any other data source -- they already have access to that data. The suggestion must come from what the n-grams themselves show.',
+    '- Do NOT suggest ad groups, audience targeting, or creative assets -- you have no visibility of these.',
+    '- Use \'Consider\' or \'Test\' only when followed by a concrete, specific action.',
+    '- Say exactly what to do and why the data supports it.',
+    '- If the campaign data contains fewer than 3 distinct actionable n-gram themes (after excluding stop words and marginal performers), write 3 suggestions based on what IS in the data -- do not repeat the same theme multiple times to fill the word count.',
+    '',
+    'Keep the whole analysis under 350 words. Do not use markdown, asterisks, or hash symbols.',
   ].join('\n'),
 
 };
@@ -328,14 +362,12 @@ const AI_CONFIG = {
 
 // -----------------------------------------------------------------------------
 // Constants
-// These are derived from CONFIG and define the columns and formatting used
-// throughout the script. Changing these will break things.
+// Derived from CONFIG. Changing these will break things.
 // -----------------------------------------------------------------------------
 const STAT_COLS   = ['clicks', 'impressions', 'cost', 'conversions', 'conversionsValue'];
 const STAT_LABELS = ['Clicks', 'Impressions', 'Cost', 'Conversions', 'Conv. Value'];
 
 // Each entry is [column label, numerator field, denominator field].
-// These are calculated from the raw stats when building each output row.
 const CALC_STATS = [
   ['CTR',            'clicks',           'impressions'],
   ['CPC',            'cost',             'clicks'],
@@ -350,28 +382,23 @@ const CURRENCY_FMT = CONFIG.currencySymbol + '#,##0.00';
 const COL_FORMATS = ['#,##0', '#,##0', CURRENCY_FMT, '#,##0.00', CURRENCY_FMT,
                      '0.00%', CURRENCY_FMT, '0.00%', CURRENCY_FMT, '0.00%'];
 
-// Recorded at startup so we can track elapsed time throughout the run.
+// Recorded at startup to track elapsed time throughout the run.
 const START_TS = Date.now();
 
-// Column indices (1-based) of the five raw stat columns within a data row,
-// relative to the start of the row. These are used by the deduplication pass
-// to know which cells to sum and which cells to ignore (label columns and
-// calculated columns). The label column count varies by sheet type, so the
-// dedup pass calculates the offset at runtime from the sheet definition.
-// The order must match STAT_COLS exactly: clicks, impressions, cost,
-// conversions, conversionsValue.
-const RAW_STAT_COUNT = STAT_COLS.length;   // 5
-const CALC_STAT_COUNT = CALC_STATS.length; // 5
+const RAW_STAT_COUNT  = STAT_COLS.length;   // 5
+const CALC_STAT_COUNT = CALC_STATS.length;  // 5
 
 
 // -----------------------------------------------------------------------------
 // main()
 // Entry point. Orchestrates the full pipeline:
 //   1. Open the spreadsheet and fetch campaign IDs.
-//   2. Load negative keywords into Maps for fast lookup.
-//   3. Initialise all output sheets.
-//   4. Stream search query rows, accumulate n-gram stats, flush to sheets.
-//   5. Finalise: deduplicate, sort, format, add filters.
+//   2. Load negative keywords for fast lookup.
+//   3. Initialise output sheets.
+//   4. Stream search query rows, accumulate n-gram stats, flush to sheets in
+//      batches so memory stays flat regardless of data volume.
+//   5. Deduplicate, sort, format, and add filters to all sheets.
+//   6. Generate the AI summary if an API key is configured.
 // -----------------------------------------------------------------------------
 function main() {
   validateConfig();
@@ -381,36 +408,24 @@ function main() {
   const campaignIds = fetchActiveCampaignIds(gaqlRange);
 
   if (campaignIds.length === 0) {
-    Logger.log('[ WeDiscover | N-Gram ] No active campaigns found with impressions in this date range. Nothing to mine. Exiting.');
+    Logger.log('⚠️  No active campaigns found with impressions in this date range. Nothing to mine.');
     return;
   }
-  Logger.log('============================================================');
-  Logger.log('  WeDiscover | Search Query N-Gram Analysis');
-  Logger.log('  Buckle up. We are mining ' + campaignIds.length + ' campaign(s) for gold.');
-  Logger.log('============================================================');
+  Logger.log('');
+  Logger.log('🔴 WeDiscover | Search Query N-Gram Analysis');
+  Logger.log('📊 Mining ' + campaignIds.length + ' campaign(s). Hang tight.');
+  Logger.log('');
 
-  // Load negative keywords into Maps keyed by ad group ID and campaign ID.
-  // Using Maps gives O(1) lookup per query row rather than looping through arrays.
   const { negsByAdGroup, negsByCampaign } = CONFIG.checkNegatives
     ? fetchAllNegatives(campaignIds, gaqlRange)
     : { negsByAdGroup: new Map(), negsByCampaign: new Map() };
 
-  Logger.log('[ 1/4 ] Negative keywords mapped. The blocklist is locked and loaded.');
+  Logger.log('✅ Negative keywords mapped.');
 
-  // Initialise sheets before processing starts. If the script crashes halfway
-  // through, any data already flushed to the sheet will still be there.
   const filterText = buildFilterText() + ' [processing...]';
   const sheets     = initialiseSheets(ss, filterText);
-  Logger.log('[ 2/4 ] Sheets initialised. Your spreadsheet is prepped and ready.');
+  Logger.log('✅ Sheets ready.');
 
-  // N-gram stats are accumulated in flat Maps using compound string keys.
-  // Every FLUSH_EVERY rows, the Maps are written to the sheet and then cleared
-  // so memory stays flat regardless of how many rows the report contains.
-  //
-  // The trade-off: flushing separate batches means the same phrase can appear
-  // as multiple rows across batches. finaliseSheets() handles this with a
-  // deduplication pass that reads the sheet back, merges rows by key, and
-  // rewrites clean data. See deduplicateSheet() for details.
   let ngramMaps    = buildEmptyNgramMaps();
   let wordCountMap = new Map();
 
@@ -433,81 +448,82 @@ function main() {
     accumulateNgrams(row, ngramMaps, wordCountMap);
     rowsProcessed++;
 
-    // Every FLUSH_EVERY rows, write the current Maps to the sheet and reset them.
-    // The time check runs after the flush because flushing itself takes time.
+    // Every FLUSH_EVERY rows, write current Maps to the sheet and reset them.
+    // This keeps memory flat; the deduplication pass in finaliseSheets()
+    // merges any rows that appear across multiple batches.
     if (rowsProcessed % FLUSH_EVERY === 0) {
       const elapsed = (Date.now() - START_TS) / 60000;
-      Logger.log('[ 3/4 ] ' + rowsProcessed.toLocaleString() + ' rows processed | ' + elapsed.toFixed(1) + ' min elapsed | Writing batch to sheet...');
+      Logger.log('⛏️  ' + rowsProcessed.toLocaleString() + ' rows | ' + elapsed.toFixed(1) + ' min | Writing batch...');
 
       flushToSheets(sheets, ngramMaps, wordCountMap);
       flushCount++;
       ngramMaps    = buildEmptyNgramMaps();
       wordCountMap = new Map();
 
-      Logger.log('         Batch ' + flushCount + ' committed to sheet. Memory cleared. Back to mining...');
+      Logger.log('   ✓ Batch ' + flushCount + ' written. Back to mining...');
 
       if ((Date.now() - START_TS) / 60000 > CONFIG.maxExecutionMinutes) {
-        Logger.log(`[ HEADS UP ] ${CONFIG.maxExecutionMinutes}-minute safety limit reached. Flushing what we have and signing off cleanly.`);
+        Logger.log('⏱️  ' + CONFIG.maxExecutionMinutes + '-min limit reached. Wrapping up what we have...');
         stoppedEarly = true;
         break;
       }
     }
   }
 
-  // Write whatever is left in the Maps after the loop finishes.
-  Logger.log('[ 3/4 ] Final batch -- writing remaining rows to sheet...');
+  Logger.log('⛏️  Writing final batch...');
   flushToSheets(sheets, ngramMaps, wordCountMap);
 
-  Logger.log('         Done mining! ' + rowsProcessed.toLocaleString() + ' rows processed, ' + rowsSkipped.toLocaleString() + ' skipped by negatives.');
+  Logger.log('✅ Mining complete: ' + rowsProcessed.toLocaleString() + ' rows processed, ' + rowsSkipped.toLocaleString() + ' skipped by negatives.');
 
   const finalFilterText = buildFilterText() + (stoppedEarly ? ' [PARTIAL -- stopped early]' : '');
   finaliseSheets(sheets, finalFilterText);
   deleteEmptySheets(ss);
 
-  // Generate the AI summary sheet if an API key has been supplied.
-  // This runs after everything else so a failure here cannot affect the main output.
   if (AI_CONFIG.apiKey) {
     var aiMode = (AI_CONFIG.mode === 'full') ? 'full' : 'account';
-    Logger.log('[ AI ] API key found. Mode: ' + aiMode + '. Generating summary...');
+    Logger.log('');
+    Logger.log('🤖 AI summary starting (mode: ' + aiMode + ')...');
     try {
       generateAiSummary(ss, aiMode);
-      Logger.log('[ AI ] Summary written successfully.');
+      Logger.log('✅ AI summary written.');
     } catch (e) {
-      Logger.log('[ AI ] Summary failed (the rest of the data is fine): ' + e);
+      Logger.log('⚠️  AI summary failed (data sheets are fine): ' + e);
     }
   }
 
-  Logger.log('[ 4/4 ] Formatting and sorting complete. Your n-gram data is ready to explore.');
-  Logger.log('============================================================');
-  Logger.log('  WeDiscover | Mission complete in ' + ((Date.now() - START_TS) / 60000).toFixed(2) + ' minutes.');
-  Logger.log('  Happy mining. Questions? scripts@we-discover.com');
-  Logger.log('============================================================');
+  Logger.log('');
+  Logger.log('🎉 Done! Completed in ' + ((Date.now() - START_TS) / 60000).toFixed(2) + ' minutes.');
+  Logger.log('📎 Your results: ' + CONFIG.spreadsheetUrl);
+  Logger.log('');
 }
 
 
 // -----------------------------------------------------------------------------
 // validateConfig()
-// Runs basic sanity checks on CONFIG before anything else happens.
-// Logs a warning rather than throwing, so the script still runs.
+// Basic sanity checks on CONFIG before anything else runs.
+// Logs warnings rather than throwing so the script still produces data output
+// even when the AI section is misconfigured.
 // -----------------------------------------------------------------------------
 function validateConfig() {
   if (CONFIG.maxNGramLength > 6) {
-    Logger.log('[ WeDiscover | WARNING ] maxNGramLength > 6 on a high-volume account risks timeout and memory errors. Consider keeping it at 4.');
+    Logger.log('⚠️  maxNGramLength > 6 risks timeouts on large accounts. Consider setting it to 4.');
   }
   if (AI_CONFIG.apiKey && AI_CONFIG.apiKey.indexOf('YOUR_') > -1) {
-    Logger.log('[ WeDiscover | WARNING ] AI_CONFIG.apiKey looks like a placeholder. Replace it with your actual Google AI Studio key or leave it blank.');
+    Logger.log('⚠️  AI_CONFIG.apiKey looks like a placeholder. Replace it with your real key or leave it blank.');
   }
   if (AI_CONFIG.apiKey && AI_CONFIG.mode !== 'account' && AI_CONFIG.mode !== 'full') {
-    Logger.log('[ WeDiscover | WARNING ] AI_CONFIG.mode must be "account" or "full". Defaulting to "account".');
+    Logger.log('⚠️  AI_CONFIG.mode must be "account" or "full". Defaulting to "account".');
+  }
+  if (CONFIG.maxExecutionMinutes > 25) {
+    Logger.log('⚠️  maxExecutionMinutes > 25 leaves no room for the AI summary before Google\'s 30-min limit. Try 15-20.');
   }
 }
 
 
 // -----------------------------------------------------------------------------
 // openSpreadsheet()
-// Opens the spreadsheet at the URL in CONFIG and removes any blank sheets
-// (such as the default "Sheet1" that Google creates automatically).
-// Throws a clear error if the URL is missing or the sheet cannot be opened.
+// Opens the spreadsheet at CONFIG.spreadsheetUrl. Throws a clear error if the
+// URL is missing or the sheet cannot be accessed.
 // -----------------------------------------------------------------------------
 function openSpreadsheet() {
   if (!CONFIG.spreadsheetUrl || CONFIG.spreadsheetUrl.indexOf('YOUR_SPREADSHEET') > -1) {
@@ -534,20 +550,15 @@ function openSpreadsheet() {
 
 // -----------------------------------------------------------------------------
 // deleteEmptySheets(ss)
-// Deletes any sheet that has no content (max row = 0 or a single empty cell,
-// as Google creates for a brand-new sheet). Called at the end of main() so it
-// catches both pre-existing blank sheets and any that Google quietly adds
-// between runs. We check ss.getSheets().length before each deletion to avoid
-// leaving the spreadsheet with zero sheets, which the API disallows.
+// Deletes any sheet with no content. Called at the end of main() to remove
+// blank sheets left over from a previous run or created automatically by Google.
+// Checks sheet count before each deletion to avoid leaving the workbook empty.
 // -----------------------------------------------------------------------------
 function deleteEmptySheets(ss) {
   var allSheets = ss.getSheets();
   for (var i = 0; i < allSheets.length; i++) {
     if (allSheets[i].getLastRow() <= 1 && ss.getSheets().length > 1) {
-      // getLastRow() returns 0 for a truly empty sheet and 1 if there is a
-      // single empty row (the state Google leaves a new sheet in). Either way,
-      // there is no script-written content and the sheet can go.
-      Logger.log('         Deleted empty sheet: ' + allSheets[i].getName());
+      Logger.log('   🗑️  Removed empty sheet: ' + allSheets[i].getName());
       ss.deleteSheet(allSheets[i]);
     }
   }
@@ -556,8 +567,8 @@ function deleteEmptySheets(ss) {
 
 // -----------------------------------------------------------------------------
 // buildDateRange()
-// Converts the DD/MM/YYYY dates in CONFIG into the GAQL date filter string
-// that AdsApp.search() expects. Throws if the format is wrong.
+// Converts DD/MM/YYYY dates from CONFIG into the GAQL date filter string
+// that AdsApp.search() expects (YYYY-MM-DD format).
 // -----------------------------------------------------------------------------
 function buildDateRange() {
   function toGaqlDate(ddmmyyyy) {
@@ -568,7 +579,6 @@ function buildDateRange() {
         'Example: 23/06/2025'
       );
     }
-    // Rearrange from DD/MM/YYYY to YYYY-MM-DD for GAQL.
     return parts[2] + '-' + parts[1] + '-' + parts[0];
   }
   return "segments.date BETWEEN '" + toGaqlDate(CONFIG.startDate) + "' AND '" + toGaqlDate(CONFIG.endDate) + "'";
@@ -578,8 +588,8 @@ function buildDateRange() {
 // -----------------------------------------------------------------------------
 // fetchActiveCampaignIds(dateRange)
 // Returns an array of campaign IDs that had impressions in the date range
-// and match any name filters set in CONFIG. These IDs are used to scope all
-// subsequent queries so we only pull data we actually need.
+// and match any name filters set in CONFIG. Scoping all subsequent queries
+// to these IDs means we only pull data we actually need.
 // -----------------------------------------------------------------------------
 function fetchActiveCampaignIds(dateRange) {
   const statusClause = CONFIG.ignorePausedCampaigns
@@ -613,12 +623,9 @@ function fetchActiveCampaignIds(dateRange) {
 
 // -----------------------------------------------------------------------------
 // fetchAllNegatives(campaignIds)
-// Builds two Maps of negative keywords: one keyed by ad group ID and one by
+// Builds two Maps of negative keywords: one by ad group ID and one by
 // campaign ID. Includes negatives from shared negative keyword lists.
-//
-// We use Maps rather than arrays so isExcludedByNegative() can look up the
-// right list in O(1) instead of scanning everything on every row.
-//
+// Using Maps gives O(1) lookup per query row rather than scanning arrays.
 // Each Map value is an array of [keywordText, matchType] pairs.
 // -----------------------------------------------------------------------------
 function fetchAllNegatives(campaignIds, _dateRange) {
@@ -631,7 +638,6 @@ function fetchAllNegatives(campaignIds, _dateRange) {
 
   const campaignIdList = campaignIds.join(',');
 
-  // Ad group level negatives.
   const agNegQuery = [
     'SELECT ad_group.id,',
     '       ad_group_criterion.keyword.text,',
@@ -653,7 +659,6 @@ function fetchAllNegatives(campaignIds, _dateRange) {
     negsByAdGroup.get(adGroupId).push(entry);
   }
 
-  // Campaign level negatives.
   const campNegQuery = [
     'SELECT campaign.id,',
     '       campaign_criterion.keyword.text,',
@@ -675,8 +680,6 @@ function fetchAllNegatives(campaignIds, _dateRange) {
   }
 
   // Shared negative keyword lists.
-  // First find which shared sets each campaign uses, then fetch the keywords
-  // from those sets and add them to the campaign-level negatives Map.
   const sharedSetToCampaigns = new Map();
 
   const sharedSetMemberQuery = [
@@ -721,13 +724,9 @@ function fetchAllNegatives(campaignIds, _dateRange) {
 
 // -----------------------------------------------------------------------------
 // isExcludedByNegative(row, negsByAdGroup, negsByCampaign)
-// Returns true if the search query in this row would be blocked by any of
-// the negative keywords at the ad group or campaign level.
-//
-// Exact match negatives must match the whole query exactly.
-// Phrase and broad match negatives just need to appear as whole words
-// somewhere in the query. We pad the query with spaces to match whole words
-// only rather than substrings (e.g. "run" should not match "running").
+// Returns true if the search query would be blocked by a negative keyword.
+// Exact match negatives must match the whole query. Phrase and broad match
+// negatives need only appear as whole words anywhere in the query.
 // -----------------------------------------------------------------------------
 function isExcludedByNegative(row, negsByAdGroup, negsByCampaign) {
   const query      = row.query;
@@ -749,12 +748,9 @@ function isExcludedByNegative(row, negsByAdGroup, negsByCampaign) {
 
 // -----------------------------------------------------------------------------
 // fetchSearchQueryRows(campaignIds, dateRange)
-// Returns an AdsApp iterator over the search term view for the given campaigns
-// and date range. We return the iterator directly rather than collecting rows
-// into an array, so the full report is never held in memory at once.
-//
-// Note: generator functions (function*) are not used because the Google Ads
-// Scripts runtime does not support them reliably.
+// Returns an AdsApp iterator over the search term view. Returning the iterator
+// directly rather than collecting into an array means the full report is never
+// held in memory at once.
 // -----------------------------------------------------------------------------
 function fetchSearchQueryRows(campaignIds, dateRange) {
   const adGroupStatusClause = CONFIG.ignorePausedAdGroups
@@ -785,14 +781,9 @@ function fetchSearchQueryRows(campaignIds, dateRange) {
 // -----------------------------------------------------------------------------
 // parseQueryRow(row)
 // Maps a raw AdsApp iterator row to a plain object with named fields.
-// Keeping this separate from the iterator loop means the data shape is defined
-// in one place and is easy to update.
-//
-// We use parseInt and parseFloat because the Ads Scripts runtime sometimes
-// returns metric fields as strings rather than numbers. Without this, adding
-// two "numbers" would concatenate them as strings instead of summing them.
-// Cost arrives in micros (millionths of the currency unit), so we divide by
-// 1,000,000 to convert to the actual currency amount.
+// parseInt and parseFloat are used because the Ads Scripts runtime sometimes
+// returns metric fields as strings. Cost arrives in micros (millionths of the
+// currency unit) and is divided by 1,000,000 to get the actual amount.
 // -----------------------------------------------------------------------------
 function parseQueryRow(row) {
   return {
@@ -812,9 +803,8 @@ function parseQueryRow(row) {
 
 // -----------------------------------------------------------------------------
 // buildEmptyNgramMaps()
-// Creates a fresh set of accumulator Maps, one for each n-gram length.
+// Creates a fresh set of accumulator Maps, one per n-gram length.
 // Each length gets three Maps: total (account level), campaign, and ad group.
-// Returns a Map keyed by n (the phrase length).
 // -----------------------------------------------------------------------------
 function buildEmptyNgramMaps() {
   const maps = new Map();
@@ -831,21 +821,20 @@ function buildEmptyNgramMaps() {
 
 // -----------------------------------------------------------------------------
 // accumulateNgrams(row, ngramMaps, wordCountMap)
-// Extracts every n-gram of every configured length from the search query,
-// then adds this row's stats to the running total for each one.
+// Extracts every n-gram of every configured length from the search query and
+// adds this row's stats to the running total for each phrase.
 //
-// Keys are compound strings using a null byte separator (e.g.
-// "Campaign Name\x00=\"running shoes\"") so we can store campaign and ad group
-// level data in a flat Map without nested objects.
+// Keys use a null byte separator (e.g. "Campaign Name\x00=\"running shoes\"")
+// so campaign and ad group data can be stored in flat Maps without nesting.
+// A Set prevents the same phrase being counted twice within one query.
 //
-// A Set tracks which phrases have already been seen within this query so the
-// same phrase in a long query is not counted more than once.
+// The =" prefix on phrases forces Google Sheets to treat the cell as plain
+// text, stopping numbers like "1000" being interpreted as numeric values.
 // -----------------------------------------------------------------------------
 function accumulateNgrams(row, ngramMaps, wordCountMap) {
   const words = row.query.split(' ');
   const stats = statsFromRow(row);
 
-  // Track how many words the query had (capped at "7+" for very long queries).
   const lenKey = words.length < 7 ? words.length : '7+';
   addStats(wordCountMap, lenKey, stats);
 
@@ -860,8 +849,6 @@ function accumulateNgrams(row, ngramMaps, wordCountMap) {
       if (seen.has(phrase)) continue;
       seen.add(phrase);
 
-      // The =" prefix forces Google Sheets to treat the cell as plain text,
-      // which stops phrases like "1000" being interpreted as numbers.
       const displayPhrase = '="' + phrase + '"';
 
       addStats(level.total,    displayPhrase, stats);
@@ -874,8 +861,8 @@ function accumulateNgrams(row, ngramMaps, wordCountMap) {
 
 // -----------------------------------------------------------------------------
 // statsFromRow(row)
-// Pulls the metric fields out of a parsed query row and returns a plain object.
-// queryCount starts at 1 because this represents one query row.
+// Pulls metric fields out of a parsed query row. queryCount starts at 1
+// because this represents one search query row.
 // -----------------------------------------------------------------------------
 function statsFromRow(row) {
   return {
@@ -891,9 +878,8 @@ function statsFromRow(row) {
 
 // -----------------------------------------------------------------------------
 // addStats(map, key, stats)
-// Adds the stats from one query row to the running total stored in the Map
-// under the given key. Creates a new entry if the key does not exist yet.
-// Object.assign is used on creation so the original stats object is not mutated.
+// Adds stats from one query row to the running total in the Map.
+// Object.assign is used on first insertion so the original object is not mutated.
 // -----------------------------------------------------------------------------
 function addStats(map, key, stats) {
   if (!map.has(key)) {
@@ -912,8 +898,8 @@ function addStats(map, key, stats) {
 
 // -----------------------------------------------------------------------------
 // buildFilterText()
-// Builds a human-readable summary of which campaigns and ad groups are included.
-// This appears in the teal status bar at the top of each sheet.
+// Human-readable summary of which campaigns and ad groups are included.
+// Appears in the teal status bar at the top of each sheet.
 // -----------------------------------------------------------------------------
 function buildFilterText() {
   let text = CONFIG.ignorePausedAdGroups ? 'Active ad groups' : 'All ad groups';
@@ -926,38 +912,25 @@ function buildFilterText() {
 
 // =============================================================================
 // SPREADSHEET OUTPUT
-// Everything below handles creating, writing to, and formatting the sheets.
 // =============================================================================
 
-
-// -----------------------------------------------------------------------------
-// WeDiscover brand colours
-// Matched from we-discover.com. Used throughout the sheet styling functions.
-// Grotesque Medium and Hot Sans (WeDiscover's brand fonts) are not available
-// in Google Sheets. Montserrat is the closest available match.
-// -----------------------------------------------------------------------------
-var WD_CRIMSON = '#C0392B';  // Primary brand red (title bars)
-var WD_TEAL    = '#3ECFB2';  // Accent teal (status bar)
-var WD_NAVY    = '#1A1F36';  // Dark navy (column headers)
-var WD_CREAM   = '#FAF8F5';  // Warm off-white (alternating data rows)
+// WeDiscover brand colours matched from we-discover.com.
+// Montserrat is the closest Google Sheets equivalent to WeDiscover's brand fonts.
+var WD_CRIMSON = '#C0392B';
+var WD_TEAL    = '#3ECFB2';
+var WD_NAVY    = '#1A1F36';
+var WD_CREAM   = '#FAF8F5';
 var WD_WHITE   = '#FFFFFF';
 var WD_FONT    = 'Montserrat';
 
 
 // -----------------------------------------------------------------------------
 // buildSheetDefs()
-// Returns an array describing every sheet the script will write to.
-// Each entry contains:
-//   name        -- the sheet tab name
-//   nLabel      -- short label used in the sheet title ("Words", "2-Grams" etc.)
-//   levelName   -- "Account", "Campaign", or "Ad Group"
-//   mapKey      -- key used to look up the right accumulator Map in flushToSheets
-//   header      -- the column header row as an array of strings
-//   keyParser   -- function that splits a compound Map key into label columns
-//   labelCount  -- number of label columns before Query Count (used by dedup pass)
-//
-// This central definition drives initialiseSheets, flushToSheets, and
-// finaliseSheets, so adding a new sheet only requires one change here.
+// Returns an array describing every output sheet. Each entry defines the tab
+// name, column headers, how to parse a compound Map key back into label columns,
+// and how many label columns precede the numeric stats. Adding a new sheet
+// only requires one change here -- initialiseSheets, flushToSheets, and
+// finaliseSheets all read from this definition.
 // -----------------------------------------------------------------------------
 function buildSheetDefs() {
   const defs = [];
@@ -1012,10 +985,9 @@ function buildSheetDefs() {
 // styleSheet(sheet, def)
 // Applies WeDiscover brand styling to the three header rows of a sheet.
 //   Row 1: crimson title bar.
-//   Row 2: teal status bar (value is set separately in initialiseSheets).
+//   Row 2: teal status bar (value set separately in initialiseSheets).
 //   Row 3: navy column header row.
-// Also sets the tab colour, freezes the header rows, and sets column widths.
-// Label columns (phrase, campaign name etc.) are wider than stat columns.
+// Also sets the tab colour, freezes headers, and sets column widths.
 // -----------------------------------------------------------------------------
 function styleSheet(sheet, def) {
   var numCols = def.header.length;
@@ -1061,8 +1033,7 @@ function styleSheet(sheet, def) {
 
   sheet.setTabColor(WD_CRIMSON);
 
-  // 5 raw stats + 5 calculated stats = 10 stat columns at the right.
-  // Everything to the left of those is a label column and gets more space.
+  // 10 stat columns on the right; everything to the left is a label column.
   var labelCols = numCols - 10;
   for (var c = 1; c <= numCols; c++) {
     sheet.setColumnWidth(c, c <= labelCols ? 160 : 120);
@@ -1073,9 +1044,8 @@ function styleSheet(sheet, def) {
 
 // -----------------------------------------------------------------------------
 // applyFilter(sheet, def)
-// Removes any existing filter on the sheet and applies a fresh one covering
-// the header row and all data rows. Removing first ensures a clean state
-// when the script runs more than once on the same sheet.
+// Removes any existing filter and applies a fresh one covering the header and
+// all data rows. Removing first ensures a clean state on repeat runs.
 // -----------------------------------------------------------------------------
 function applyFilter(sheet, def) {
   var existingFilter = sheet.getFilter();
@@ -1088,12 +1058,11 @@ function applyFilter(sheet, def) {
 
 // -----------------------------------------------------------------------------
 // initialiseSheets(ss, filterText)
-// Creates all output sheets (or clears them if they already exist), applies
-// brand styling, writes the header row, and returns a registry Map.
-//
+// Creates all output sheets (or clears existing ones), applies brand styling,
+// writes column headers, and returns a registry Map.
 // The registry stores { sheet, def, nextRow } for each sheet name.
-// nextRow tracks where the next batch of data should be written, avoiding
-// the need to call getLastRow() on every flush and saving Sheets API calls.
+// nextRow tracks where the next batch should be written, avoiding the need to
+// call getLastRow() on every flush.
 // -----------------------------------------------------------------------------
 function initialiseSheets(ss, filterText) {
   var defs     = buildSheetDefs();
@@ -1107,12 +1076,9 @@ function initialiseSheets(ss, filterText) {
 
     styleSheet(sheet, def);
 
-    // Row 2 value must be set after styleSheet() calls merge() on that row,
-    // otherwise the merge wipes the value.
+    // Row 2 value must be set after styleSheet() calls merge() on it.
     sheet.getRange('A2').setValue(filterText);
 
-    // Write header values into row 3, then re-apply styling because setValues()
-    // strips any formatting that was applied beforehand.
     var hRange = sheet.getRange(3, 1, 1, def.header.length);
     hRange.setValues([def.header]);
     hRange.setBackground(WD_NAVY);
@@ -1122,31 +1088,24 @@ function initialiseSheets(ss, filterText) {
     registry.set(def.name, { sheet: sheet, def: def, nextRow: 4 });
   }
 
-  Logger.log('         ' + defs.length + ' sheets created and headers written.');
+  Logger.log('   📋 ' + defs.length + ' sheets created.');
   return registry;
 }
 
 
 // -----------------------------------------------------------------------------
 // flushToSheets(sheets, ngramMaps, wordCountMap)
-// Writes the current batch of accumulated n-gram data to the spreadsheet.
-// Called every FLUSH_EVERY rows during processing, and once at the end.
-//
+// Writes the current batch of n-gram data to the spreadsheet.
 // Only rows that meet all threshold settings are written.
+// SpreadsheetApp.flush() at the end commits all pending writes in one round trip.
 //
-// entry.nextRow is used instead of sheet.getLastRow() to avoid an extra
-// API call per sheet per flush. SpreadsheetApp.flush() at the end commits
-// all pending writes in one round trip.
-//
-// Rows written here may be duplicates of rows from a previous batch if the
-// same phrase appeared in both. This is intentional: keeping raw sums per
-// batch is cheaper than maintaining a single growing Map across all batches.
-// The deduplication pass in finaliseSheets() merges them correctly.
+// The same phrase can appear in multiple flush batches when data is large.
+// This is intentional -- keeping raw sums per batch is cheaper than maintaining
+// one growing Map. deduplicateSheet() in finaliseSheets() merges them.
 // -----------------------------------------------------------------------------
 function flushToSheets(sheets, ngramMaps, wordCountMap) {
   const t = CONFIG.thresholds;
 
-  // Build a lookup from mapKey to the relevant accumulator Map.
   const mapLookup = new Map();
   mapLookup.set('wordcount', wordCountMap);
   for (let n = CONFIG.minNGramLength; n <= CONFIG.maxNGramLength; n++) {
@@ -1184,10 +1143,9 @@ function flushToSheets(sheets, ngramMaps, wordCountMap) {
 // -----------------------------------------------------------------------------
 // buildPrintline(labelParts, s)
 // Builds a single output row as a flat array.
-// labelParts contains the text columns (phrase, campaign name etc.).
-// s is the stats object for this phrase.
-// Calculated stats (CTR, CPC etc.) are appended at the end.
-// If a denominator is zero, a hyphen is written rather than dividing by zero.
+// labelParts contains the text columns (phrase, campaign name, etc.).
+// Calculated stats (CTR, CPC, etc.) are appended at the end.
+// A hyphen is written instead of dividing by zero.
 // -----------------------------------------------------------------------------
 function buildPrintline(labelParts, s) {
   const line = labelParts.concat([s.queryCount,
@@ -1204,45 +1162,39 @@ function buildPrintline(labelParts, s) {
 
 // =============================================================================
 // DEDUPLICATION
-// The flush-and-reset architecture means the same phrase can appear as multiple
-// rows across different batches. The functions below fix this by reading each
-// sheet back after all batches are written, merging rows with matching keys,
-// and rewriting a clean, deduplicated set of rows.
 //
-// Why do this here rather than keeping a persistent Map?
-// A persistent Map would hold every unique phrase seen so far. On a large
-// account with 2M+ search term rows and 1-to-4-gram analysis, that Map grows
-// to hundreds of thousands of entries and eventually causes memory errors.
-// The flush-and-reset approach keeps memory flat. The deduplication pass reads
-// one sheet at a time, which Google Sheets handles fine, and the resulting
-// merged Map is much smaller than the full raw-data Map would have been.
+// The flush-and-reset architecture means the same phrase can appear as multiple
+// rows across different batches. These functions fix that by reading each sheet
+// back after all batches are written, merging rows with matching keys, and
+// rewriting a clean deduplicated set.
+//
+// Why not keep a persistent Map instead?
+// On large accounts a persistent Map holding every unique phrase seen so far
+// grows to hundreds of thousands of entries and causes memory errors. The
+// flush-and-reset approach keeps memory flat. The deduplication pass reads one
+// sheet at a time, which Sheets handles easily, and the merged Map is much
+// smaller than the full raw-data Map would have been.
 // =============================================================================
 
 
 // -----------------------------------------------------------------------------
 // deduplicateSheet(entry)
-// Reads all data rows from a sheet, merges rows that share the same key
-// (label columns), recalculates derived stats from the merged raw totals,
-// and writes the clean rows back to the sheet starting at row 4.
+// Reads all data rows from a sheet, merges rows that share the same label key,
+// recalculates derived stats from the merged raw totals, and rewrites the sheet.
 //
-// The key for each row is formed by joining its label columns with a null byte.
-// The number of label columns is def.labelCount (e.g. 1 for account-level,
-// 2 for campaign-level, 3 for ad group-level sheets).
-//
-// Column layout of each data row (0-indexed):
-//   [0 .. labelCount-1]              label columns (phrase, campaign etc.)
-//   [labelCount]                     Query Count
-//   [labelCount+1 .. labelCount+5]   raw stats (clicks, impressions, cost,
-//                                    conversions, conversionsValue)
-//   [labelCount+6 .. labelCount+10]  calculated stats (ignored on read,
-//                                    recalculated on write)
+// Column layout (0-indexed):
+//   [0 .. labelCount-1]            label columns (phrase, campaign, etc.)
+//   [labelCount]                   Query Count
+//   [labelCount+1 .. labelCount+5] raw stats (clicks, impressions, cost,
+//                                  conversions, conversionsValue)
+//   [labelCount+6 .. labelCount+10] calculated stats (recalculated on write)
 //
 // Returns the number of rows written after deduplication.
 // -----------------------------------------------------------------------------
 function deduplicateSheet(entry) {
   const sheet      = entry.sheet;
   const def        = entry.def;
-  const lastRow    = entry.nextRow - 1;  // nextRow points to the next empty row
+  const lastRow    = entry.nextRow - 1;
   const firstData  = 4;
 
   if (lastRow < firstData) return 0;
@@ -1250,22 +1202,16 @@ function deduplicateSheet(entry) {
   const numCols    = def.header.length;
   const dataRows   = sheet.getRange(firstData, 1, lastRow - firstData + 1, numCols).getValues();
 
-  // labelCount tells us how many leading columns are labels (not numbers).
-  // After those come: queryCount, then RAW_STAT_COUNT raw stat columns.
   const lc         = def.labelCount;
-  const qcIdx      = lc;       // column index of Query Count
-  const statStart  = lc + 1;   // column index of first raw stat (Clicks)
+  const qcIdx      = lc;
+  const statStart  = lc + 1;
 
-  // Merge rows by key, summing all numeric columns.
-  // We preserve insertion order so the first occurrence of each key determines
-  // the key order going into the sort step.
-  const merged  = new Map();
+  const merged   = new Map();
   const keyOrder = [];
 
   for (var r = 0; r < dataRows.length; r++) {
     var row = dataRows[r];
 
-    // Build the compound key from the label columns.
     var keyParts = [];
     for (var k = 0; k < lc; k++) {
       keyParts.push(row[k]);
@@ -1273,7 +1219,6 @@ function deduplicateSheet(entry) {
     var key = keyParts.join('\x00');
 
     if (!merged.has(key)) {
-      // First time we have seen this key: store labels and initialise counters.
       var labels = [];
       for (var j = 0; j < lc; j++) {
         labels.push(row[j]);
@@ -1292,9 +1237,7 @@ function deduplicateSheet(entry) {
 
     var acc = merged.get(key);
 
-    // Query Count may have been written as a string by a previous run, so
-    // we coerce it to a number before adding. Same risk as the Ads Scripts
-    // runtime returning metrics as strings.
+    // Coerce to number -- a previous run may have written strings.
     acc.queryCount       += parseFloat(row[qcIdx])          || 0;
     acc.clicks           += parseFloat(row[statStart])      || 0;
     acc.impressions      += parseFloat(row[statStart + 1])  || 0;
@@ -1303,22 +1246,12 @@ function deduplicateSheet(entry) {
     acc.conversionsValue += parseFloat(row[statStart + 4])  || 0;
   }
 
-  // Rebuild the data rows from the merged Map.
-  // buildPrintline expects { clicks, impressions, cost, conversions,
-  // conversionsValue, queryCount } as its second argument, which matches
-  // exactly what we stored in each merged entry.
   const cleanRows = [];
   for (var ki = 0; ki < keyOrder.length; ki++) {
     var acc2 = merged.get(keyOrder[ki]);
     cleanRows.push(buildPrintline(acc2.labels, acc2));
   }
 
-  // Write clean rows back, starting at row 4. We know exactly how many rows
-  // we are writing, so we can clear only what we need to clear and avoid
-  // leaving stale data below the new rows.
-  //
-  // Clear the entire data area first (old row count may be larger or smaller
-  // than the new row count, so we cannot rely on overwriting in place).
   sheet.getRange(firstData, 1, lastRow - firstData + 1, numCols).clearContent();
   if (cleanRows.length > 0) {
     sheet.getRange(firstData, 1, cleanRows.length, numCols).setValues(cleanRows);
@@ -1331,9 +1264,7 @@ function deduplicateSheet(entry) {
 
 // -----------------------------------------------------------------------------
 // HEADER_NOTES
-// Hover tooltips for each column header. These appear when a user hovers over
-// a cell in row 3. They explain what each column means without cluttering
-// the view for users who already know.
+// Hover tooltips for each column header, shown when a user hovers over row 3.
 // -----------------------------------------------------------------------------
 var HEADER_NOTES = {
   'Word Count':      'Number of words in the search query',
@@ -1356,7 +1287,7 @@ var HEADER_NOTES = {
 
 // -----------------------------------------------------------------------------
 // addHeaderNotes(sheet, header)
-// Adds the hover notes from HEADER_NOTES to the column header cells in row 3.
+// Adds hover notes from HEADER_NOTES to column header cells in row 3.
 // -----------------------------------------------------------------------------
 function addHeaderNotes(sheet, header) {
   for (var c = 0; c < header.length; c++) {
@@ -1370,8 +1301,7 @@ function addHeaderNotes(sheet, header) {
 
 // -----------------------------------------------------------------------------
 // applyAlternatingRows(sheet, firstDataRow, dataRowCount, numCols)
-// Colours data rows alternately white and warm cream.
-// This makes it easier to read across wide rows with many stat columns.
+// Colours data rows alternately white and warm cream for readability.
 // -----------------------------------------------------------------------------
 function applyAlternatingRows(sheet, firstDataRow, dataRowCount, numCols) {
   for (var r = 0; r < dataRowCount; r++) {
@@ -1383,16 +1313,11 @@ function applyAlternatingRows(sheet, firstDataRow, dataRowCount, numCols) {
 
 // -----------------------------------------------------------------------------
 // setDataFont(sheet, firstDataRow, dataRowCount, numCols, labelCount)
-// Sets data rows to Arial. Montserrat looks good on headers but renders slowly
+// Sets data rows to Arial. Montserrat is great on headers but slow to render
 // at thousands of rows. Arial is fast, clean, and universally available.
-//
-// Alignment is set in two passes:
-//   1. Right-align the entire data range -- numeric and calculated stat columns
-//      should all be right-aligned, and the hyphen written for zero-denominator
-//      stats (e.g. Cost / Conv. with no conversions) is a string so would
-//      left-align by default without this explicit override.
-//   2. Left-align just the label columns (phrase, campaign, ad group) so
-//      text values read naturally from the left.
+// Numeric columns are right-aligned; label columns are left-aligned.
+// The hyphen written for zero-denominator stats (e.g. Cost/Conv. with no
+// conversions) is a string and would left-align without the explicit override.
 // -----------------------------------------------------------------------------
 function setDataFont(sheet, firstDataRow, dataRowCount, numCols, labelCount) {
   sheet.getRange(firstDataRow, 1, dataRowCount, numCols)
@@ -1401,7 +1326,6 @@ function setDataFont(sheet, firstDataRow, dataRowCount, numCols, labelCount) {
     .setVerticalAlignment('middle')
     .setHorizontalAlignment('right');
 
-  // Left-align the label columns over the top of the right-align above.
   sheet.getRange(firstDataRow, 1, dataRowCount, labelCount)
     .setHorizontalAlignment('left');
 }
@@ -1410,12 +1334,7 @@ function setDataFont(sheet, firstDataRow, dataRowCount, numCols, labelCount) {
 // -----------------------------------------------------------------------------
 // trimSheet(sheet, usedCols, usedRows)
 // Deletes columns and rows beyond the data range. Google Sheets creates 26
-// columns and 1,000 rows by default. Trimming keeps the sheet clean and
-// reduces the file size when opening large spreadsheets.
-//
-// usedRows is the index of the last row that contains data (i.e. the row
-// number of the last data row, not a count). We delete everything after it so
-// the sheet ends exactly at the last data row with no trailing empty rows.
+// columns and 1,000 rows by default; trimming keeps the file lean.
 // -----------------------------------------------------------------------------
 function trimSheet(sheet, usedCols, usedRows) {
   var maxCols = sheet.getMaxColumns();
@@ -1431,39 +1350,31 @@ function trimSheet(sheet, usedCols, usedRows) {
 
 // -----------------------------------------------------------------------------
 // finaliseSheets(sheets, finalFilterText)
-// Runs once after all data has been flushed. For each sheet it:
+// Runs once after all data has been flushed. For each sheet:
 //   1. Deduplicates rows written across multiple flush batches.
 //   2. Updates the teal status bar with the final filter text.
 //   3. Applies number formatting to all data rows in one API call.
-//   4. Sorts by label column(s) ascending, then clicks descending.
+//   4. Sorts: label columns ascending, then clicks descending.
 //   5. Applies alternating row colours.
-//   6. Sets the data font to Arial.
-//   7. Adds hover notes to the column headers.
+//   6. Sets data font to Arial.
+//   7. Adds hover notes to column headers.
 //   8. Trims unused rows and columns.
 //   9. Adds a column filter to the header row.
 //
-// Deduplication must run before sorting, formatting, and filtering, because
-// those steps all depend on the final row count. Running dedup first also
-// means sort and format only touch the deduplicated rows, which is faster.
-//
-// Doing all formatting here (rather than on each flush) means we only pay
-// the Sheets API cost once per sheet, regardless of how many flushes ran.
+// Deduplication runs first because sort and format depend on the final row count.
+// All formatting is done here rather than on each flush to pay the Sheets API
+// cost once per sheet regardless of how many flushes ran.
 // -----------------------------------------------------------------------------
 function finaliseSheets(sheets, finalFilterText) {
   for (const [, entry] of sheets) {
     const sheet = entry.sheet;
     const def   = entry.def;
 
-    // Merge duplicate rows before doing anything else. entry.nextRow may
-    // overcount if the same phrase appeared in multiple flush batches, so
-    // we update it from the return value of deduplicateSheet().
     const dedupedRowCount = deduplicateSheet(entry);
     entry.nextRow = 4 + dedupedRowCount;
 
-    Logger.log('         Deduplicated: ' + sheet.getName() + ' (' + (entry.nextRow - 4).toLocaleString() + ' unique rows)');
+    Logger.log('   🔄 ' + sheet.getName() + ': ' + (entry.nextRow - 4).toLocaleString() + ' unique rows');
 
-    // Update the teal status bar and re-apply styling because setValue() can
-    // strip formatting on merged cells.
     sheet.getRange('A2').setValue(finalFilterText);
     var r2 = sheet.getRange(2, 1, 1, def.header.length);
     r2.setBackground(WD_TEAL);
@@ -1479,9 +1390,8 @@ function finaliseSheets(sheets, finalFilterText) {
 
     const numCols = def.header.length;
 
-    // Number formatting.
-    // Label columns use '@' (plain text format). Query Count uses '#,##0'.
-    // Stat and calculated stat columns use the formats defined in COL_FORMATS.
+    // Label columns use '@' (plain text). Query Count uses '#,##0'.
+    // Stat and calculated columns use the formats in COL_FORMATS.
     const labelCount = numCols - COL_FORMATS.length - 1;
     const fullFmtRow = Array(labelCount).fill('@')
       .concat(['#,##0'])
@@ -1489,8 +1399,6 @@ function finaliseSheets(sheets, finalFilterText) {
     sheet.getRange(4, 1, dataRowCount, numCols)
       .setNumberFormats(Array(dataRowCount).fill(fullFmtRow));
 
-    // Sort by the first label column ascending, then clicks descending.
-    // Ad Group sheets also sort by the second column (ad group name) ascending.
     const clicksCol   = def.header.indexOf('Clicks') + 1;
     const sortColumns = [{ column: 1, ascending: true }];
     if (def.header[1] === 'Ad Group') {
@@ -1505,87 +1413,190 @@ function finaliseSheets(sheets, finalFilterText) {
     trimSheet(sheet, numCols, entry.nextRow - 1);
     applyFilter(sheet, def);
 
-    Logger.log('         Sorted & formatted: ' + sheet.getName() + ' (' + dataRowCount.toLocaleString() + ' rows)');
+    Logger.log('   ✓ Sorted & formatted: ' + sheet.getName());
   }
 }
 
 
 // =============================================================================
 // AI SUMMARY
+//
+// HOW THIS WORKS
+// --------------
+// After all data sheets are written, this section generates an AI summary
+// using Google's Gemini Flash model via the Google AI Studio API.
+//
+// 1. The script reads phrase data back from the finished Google Sheets output
+//    (not from the original Ads data -- this is fast).
+//
+// 2. The client's brand name is detected automatically by querying the most
+//    common domain across all ad final URLs. This is more reliable than using
+//    the account name, which may reflect the agency name or other naming
+//    conventions rather than the actual client brand.
+//
+// 3. Data is formatted as compact CSV (phrase, clicks, cost, conversions,
+//    conv_value, roas) and sent to Gemini along with prompt instructions.
+//
+// 4. In 'account' mode: one API call with the top N phrases per account-level
+//    sheet. In 'full' mode: one call per campaign using campaign and ad group
+//    level data.
+//
+// 5. For large campaigns the script automatically splits data into chunks that
+//    fit within the token budget, sends them separately, and combines responses.
+//
+// 6. Results are written to a branded "AI Summary" sheet at the front of the
+//    workbook. Any campaigns not reached before the time limit are listed in a
+//    NOTICE section at the bottom of the sheet.
+//
+// 7. Any failure in the AI section is caught and logged without affecting the
+//    data sheets.
 // =============================================================================
+
+
+// -----------------------------------------------------------------------------
+// fetchClientBrand()
+// Identifies the client's proper brand name in two steps.
 //
-// HOW THIS WORKS -- A PLAIN-ENGLISH EXPLANATION
-// -----------------------------------------------
-// After the script finishes writing all the data sheets, this section takes
-// over if you have provided an API key. Here is what happens, step by step:
+// Step 1 -- domain detection:
+//   Queries a sample of enabled ads and extracts the registered domain from
+//   each final URL. The most frequently occurring domain wins.
+//   e.g. "notonthehighstreet.com" -> raw domain "notonthehighstreet"
+//        "shop.example.co.uk"     -> raw domain "example"
 //
-// 1. READING THE DATA
-//    The script reads the phrase data back from the Google Sheets it just wrote.
-//    It does not re-process the original Google Ads data -- it simply reads the
-//    finished output sheets, which is fast.
+//   Falls back to the Google Ads account descriptive name if no URLs are found,
+//   and to the string "the client" if that also fails.
 //
-// 2. FORMATTING THE DATA FOR THE AI
-//    The raw sheet data is converted into a compact text format (similar to a
-//    CSV) that the AI can read efficiently. Only the columns that matter for
-//    analysis are included: phrase, clicks, cost, conversions, conversion value,
-//    and ROAS. The rest (impressions, CTR, etc.) are left out to keep the prompt
-//    small and focused.
-//
-// 3. SENDING THE DATA TO GEMINI
-//    The formatted data and the prompt instructions are sent to the Gemini Flash
-//    API over HTTPS using Google Apps Script's built-in UrlFetchApp. This is
-//    the same mechanism used by other Google Ads scripts that call external
-//    services. The call takes a few seconds per request.
-//
-// 4. IN 'ACCOUNT' MODE (the default)
-//    One API call is made. It contains the top N phrases by clicks from each
-//    of the four account-level sheets (words, 2-grams, 3-grams, 4-grams).
-//    The AI writes a single account-level summary.
-//
-// 5. IN 'FULL' MODE
-//    One API call is made per campaign. Each call contains all the phrase data
-//    for that campaign at both campaign level and ad group level.
-//
-//    For large campaigns (for example, a campaign with 100+ ad groups or very
-//    high search volume), a single call might contain more data than is ideal
-//    for the AI to work with. In that case, the script automatically splits the
-//    campaign data into chunks that each stay within the token budget, sends
-//    them as separate calls, and then stitches the responses together into one
-//    campaign section in the output sheet.
-//
-//    You do not need to configure or think about this. The script measures each
-//    campaign's data size automatically and handles chunking without any input
-//    from you. It works the same way on every account regardless of structure.
-//
-// 6. WRITING THE OUTPUT
-//    The AI's responses are written to a branded "AI Summary" sheet at the
-//    front of the workbook. In 'full' mode, each campaign gets its own clearly
-//    labelled section with a teal header row, so you can scroll through and
-//    find specific campaigns quickly.
-//
-// 7. IF SOMETHING GOES WRONG
-//    Any failure in the AI section is caught and logged without affecting the
-//    data sheets. If the API call fails (wrong key, quota exceeded, network
-//    issue), you will see an error message in the script logs and the data
-//    sheets will be completely unaffected.
-//
-// WHAT A 'TOKEN' IS
-// -----------------
-// AI models measure text length in 'tokens' rather than characters. A token is
-// roughly 4 characters or about 0.75 words. The token budget (AI_CONFIG.
-// tokenBudget) controls how much data is sent per API call in 'full' mode.
-// At 60,000 tokens per call, each call contains roughly 45,000 words of data --
-// more than enough for a detailed ad group level analysis of any single campaign.
-//
-// =============================================================================
+// Step 2 -- brand name resolution via Gemini:
+//   The raw domain string is passed to Gemini with a tight prompt asking it to
+//   return the correctly formatted brand name and nothing else. This handles
+//   cases that simple string manipulation cannot:
+//     "notonthehighstreet" -> "Not On The High Street"
+//     "marksandspencer"    -> "Marks & Spencer"
+//     "johnlewis"          -> "John Lewis"
+//   If the Gemini call fails for any reason, the raw domain (title-cased as a
+//   fallback) is used so the rest of the summary is not blocked.
+// -----------------------------------------------------------------------------
+function fetchClientBrand() {
+  var rawBrand = 'the client';
+
+  // -- Step 1: detect the most common domain from ad final URLs ----------------
+  try {
+    var adQuery = [
+      'SELECT ad_group_ad.ad.final_urls',
+      'FROM   ad_group_ad',
+      'WHERE  ad_group_ad.status = \'ENABLED\'',
+      '       AND campaign.status = \'ENABLED\'',
+      'LIMIT  500',
+    ].join(' ');
+
+    var domainCount = {};
+    for (var row of AdsApp.search(adQuery)) {
+      var urls = row.adGroupAd.ad.finalUrls;
+      if (!urls || urls.length === 0) continue;
+
+      var url      = urls[0];
+      var hostname = url.replace(/^https?:\/\//i, '').split('/')[0].split('?')[0].toLowerCase();
+      hostname     = hostname.replace(/^www\./, '');
+
+      // Extract the registered domain (the part before the public suffix).
+      // For two-part TLDs like .co.uk or .com.au, take the third-from-last segment.
+      var parts = hostname.split('.');
+      var registeredName;
+      if (parts.length >= 3 && parts[parts.length - 2].length <= 3) {
+        registeredName = parts[parts.length - 3];
+      } else {
+        registeredName = parts[parts.length - 2];
+      }
+
+      if (registeredName) {
+        domainCount[registeredName] = (domainCount[registeredName] || 0) + 1;
+      }
+    }
+
+    var topDomain = null;
+    var topCount  = 0;
+    for (var domain in domainCount) {
+      if (domainCount[domain] > topCount) {
+        topCount  = domainCount[domain];
+        topDomain = domain;
+      }
+    }
+
+    if (topDomain) {
+      rawBrand = topDomain;
+      Logger.log('🔍 Domain detected: "' + rawBrand + '" (' + topCount + ' ads)');
+    } else {
+      throw new Error('no URLs found');
+    }
+
+  } catch (e) {
+    Logger.log('⚠️  Could not detect domain from URLs. Trying account name...');
+
+    // Fallback: use the Google Ads account descriptive name.
+    try {
+      var customerQuery = 'SELECT customer.descriptive_name FROM customer LIMIT 1';
+      for (var custRow of AdsApp.search(customerQuery)) {
+        var name = custRow.customer.descriptiveName;
+        if (name) {
+          rawBrand = name;
+          Logger.log('🔍 Using account name as brand: "' + rawBrand + '"');
+          break;
+        }
+      }
+    } catch (e2) {
+      Logger.log('⚠️  Could not read account name either. Using generic fallback.');
+    }
+  }
+
+  // If detection produced nothing useful, return early without burning an API call.
+  if (rawBrand === 'the client') return rawBrand;
+
+  // -- Step 2: ask Gemini to resolve the proper brand name ---------------------
+  // The domain string alone is often not the correct brand name. "notonthehighstreet"
+  // should become "Not On The High Street"; "marksandspencer" should become
+  // "Marks & Spencer". Simple title-casing cannot handle these cases reliably.
+  // One small Gemini call resolves this correctly for virtually any brand.
+  try {
+    var brandPrompt = [
+      'A Google Ads account has the domain name "' + rawBrand + '".',
+      'What is the correct, properly formatted brand name for this company?',
+      'Reply with ONLY the brand name -- no explanation, no punctuation, no extra words.',
+      'Examples:',
+      '  notonthehighstreet -> Not On The High Street',
+      '  marksandspencer    -> Marks & Spencer',
+      '  johnlewis          -> John Lewis',
+      '  ikea               -> IKEA',
+      '  asos               -> ASOS',
+    ].join('\n');
+
+    var resolvedBrand = callGemini(brandPrompt).trim();
+
+    // Sanity check: reject the response if it is suspiciously long (more than
+    // 60 characters suggests Gemini returned an explanation rather than a name)
+    // or empty, and fall back to a simple title-cased version of the raw domain.
+    if (!resolvedBrand || resolvedBrand.length > 60) {
+      throw new Error('unexpected response: "' + resolvedBrand + '"');
+    }
+
+    Logger.log('✅ Brand: "' + resolvedBrand + '"');
+    return resolvedBrand;
+
+  } catch (e3) {
+    // Non-fatal: fall back to title-casing the raw domain string.
+    var fallback = rawBrand.split('-').map(function(w) {
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    }).join(' ');
+    Logger.log('⚠️  Brand resolution failed. Using: "' + fallback + '"');
+    return fallback;
+  }
+}
 
 
 // -----------------------------------------------------------------------------
 // countTokens(rows)
 // Estimates the token count for a 2D array of row data.
-// We use a 4-characters-per-token approximation, which is standard for English
-// text mixed with numbers. This is used to decide whether a campaign's data
-// fits in one API call or needs to be split into chunks.
+// Uses a 4-characters-per-token approximation, standard for mixed
+// English text and numbers.
 // -----------------------------------------------------------------------------
 function countTokens(rows) {
   var chars = 0;
@@ -1602,13 +1613,11 @@ function countTokens(rows) {
 
 // -----------------------------------------------------------------------------
 // formatCampaignRow(row)
-// Converts a campaign-level sheet row into a compact CSV line.
-// Campaign sheet column layout (0-indexed):
-//   0  Campaign name  1  Phrase  2  Query Count  3  Clicks  4  Impressions
-//   5  Cost  6  Conversions  7  Conv. Value  8..12  Calculated stats
-// We send: phrase, clicks, cost, conversions, conv_value, roas.
-// ROAS is recalculated from cost and conv_value rather than read from the sheet
-// so it is always accurate regardless of how the sheet formatted it.
+// Converts a campaign-level sheet row to a compact CSV line.
+// Campaign sheet columns (0-indexed): 0 campaign, 1 phrase, 2 query count,
+// 3 clicks, 4 impressions, 5 cost, 6 conversions, 7 conv value, 8-12 calc stats.
+// Sends: phrase, clicks, cost, conversions, conv_value, roas.
+// ROAS is recalculated from cost and conv_value for accuracy.
 // -----------------------------------------------------------------------------
 function formatCampaignRow(row) {
   var phrase = String(row[1]);
@@ -1623,11 +1632,11 @@ function formatCampaignRow(row) {
 
 // -----------------------------------------------------------------------------
 // formatAdGroupRow(row)
-// Converts an ad group-level sheet row into a compact CSV line.
-// Ad group sheet column layout (0-indexed):
-//   0  Campaign  1  Ad Group  2  Phrase  3  Query Count  4  Clicks
-//   5  Impressions  6  Cost  7  Conversions  8  Conv. Value  9..13  Calculated
-// We send: ad_group, phrase, clicks, cost, conversions, conv_value, roas.
+// Converts an ad group-level sheet row to a compact CSV line.
+// Ad group sheet columns (0-indexed): 0 campaign, 1 ad group, 2 phrase,
+// 3 query count, 4 clicks, 5 impressions, 6 cost, 7 conversions, 8 conv value,
+// 9-13 calculated stats.
+// Sends: ad_group, phrase, clicks, cost, conversions, conv_value, roas.
 // -----------------------------------------------------------------------------
 function formatAdGroupRow(row) {
   var adGroup = String(row[1]);
@@ -1643,9 +1652,7 @@ function formatAdGroupRow(row) {
 
 // -----------------------------------------------------------------------------
 // readSheetRowsByCampaign(ss, sheetNames, campaignColIndex)
-// Reads the data rows from a list of sheets and groups them by campaign name.
-// campaignColIndex is the 0-based column index of the campaign name field,
-// which differs between campaign sheets (0) and ad group sheets (0).
+// Reads data rows from a list of sheets and groups them by campaign name.
 // Returns a Map: campaignName -> array of raw row arrays.
 // -----------------------------------------------------------------------------
 function readSheetRowsByCampaign(ss, sheetNames, campaignColIndex) {
@@ -1672,7 +1679,6 @@ function readSheetRowsByCampaign(ss, sheetNames, campaignColIndex) {
 // readSheetRowsByCampaignAndAdGroup(ss, sheetNames)
 // Like readSheetRowsByCampaign but groups into a nested Map:
 //   campaignName -> adGroupName -> array of rows.
-// Used for building ad group chunks in full mode.
 // -----------------------------------------------------------------------------
 function readSheetRowsByCampaignAndAdGroup(ss, sheetNames) {
   var result = new Map();
@@ -1698,11 +1704,9 @@ function readSheetRowsByCampaignAndAdGroup(ss, sheetNames) {
 
 // -----------------------------------------------------------------------------
 // calcCampaignAvgRoas(campRows)
-// Calculates the average ROAS for a campaign from its raw campaign-level rows.
-// Used to inject a benchmark into the campaign prompt so the AI can describe
-// individual ad groups as above or below average.
-// Returns a formatted string like "4.32" or "0" if cost is zero.
+// Calculates average ROAS for a campaign from its campaign-level rows.
 // Campaign cost is at index 5, conv value at index 7.
+// Returns a formatted string like "4.32", or "0" if cost is zero.
 // -----------------------------------------------------------------------------
 function calcCampaignAvgRoas(campRows) {
   var totalCost = 0;
@@ -1717,97 +1721,132 @@ function calcCampaignAvgRoas(campRows) {
 
 
 // -----------------------------------------------------------------------------
+// topNRowsByClicks(rows, clicksColIndex, n)
+// Returns the top n rows sorted by clicks descending.
+// Used to limit rows sent to the AI per campaign and per ad group, which is
+// the primary control on chunk count for large accounts.
+// If n is 0 or negative, all rows are returned unchanged.
+// -----------------------------------------------------------------------------
+function topNRowsByClicks(rows, clicksColIndex, n) {
+  if (!n || n <= 0) return rows;
+  var sorted = rows.slice().sort(function(a, b) {
+    return (parseFloat(b[clicksColIndex]) || 0) - (parseFloat(a[clicksColIndex]) || 0);
+  });
+  return sorted.slice(0, n);
+}
+
+
+// -----------------------------------------------------------------------------
 // buildCampaignChunks(campaignName, campRows, agRowsByAdGroup)
 // Determines how to split a campaign's data into API calls.
 //
-// The token budget (AI_CONFIG.tokenBudget) is the maximum number of tokens
-// allowed per call. Campaign-level rows are always included in every chunk as
-// context -- they tell the AI which campaign it is looking at and what the
-// overall phrase landscape looks like. Ad group rows are then packed into
-// chunks one ad group at a time until the budget is reached.
+// topN filtering is applied first (clicks descending) to both campaign-level
+// rows and each individual ad group's rows. This is the primary control on
+// chunk count -- on most accounts it alone is sufficient to keep calls to 1-2.
 //
-// If a single ad group's rows exceed the budget on their own (this happens with
-// very large shopping or broad-match campaigns), that ad group is split at the
-// phrase level -- rows are packed until the budget is hit, then a new chunk
-// starts. The AI is told in the prompt that it is seeing a partial view.
+// After filtering, ad groups are packed into chunks up to the token budget.
+// If a single ad group still exceeds the budget it is split at phrase level.
 //
-// Returns an array of chunk objects, each with:
-//   agRows   -- array of ad group rows to include in this chunk
-//   chunkIdx -- 1-based index of this chunk within the campaign
-//   total    -- total number of chunks for this campaign
+// If the natural chunk count still exceeds maxChunksPerCampaign, all filtered
+// ad group rows are re-partitioned evenly across that many chunks as a
+// last-resort safety net.
+//
+// Each returned chunk object contains:
+//   agRows    -- ad group rows for this chunk
+//   campRows  -- filtered campaign-level rows (same for every chunk)
+//   chunkIdx  -- 1-based index of this chunk
+//   total     -- total number of chunks for this campaign
 // -----------------------------------------------------------------------------
 function buildCampaignChunks(campaignName, campRows, agRowsByAdGroup) {
-  var campTok   = countTokens(campRows);
-  // Use a slightly tighter budget for the phrase-level fallback to ensure
-  // that adding the campaign rows as context never pushes a chunk over the limit.
-  var agBudget  = AI_CONFIG.tokenBudget - campTok - 200;
 
-  // First pass: collect all chunks
-  var chunks    = [];
-  var curChunk  = [];
-  var curTok    = 0;
+  var filteredCampRows = topNRowsByClicks(campRows, 3, AI_CONFIG.topN);
 
-  var agNames = Array.from(agRowsByAdGroup.keys());
+  var campTok  = countTokens(filteredCampRows);
+  var agBudget = AI_CONFIG.tokenBudget - campTok - 200;
+
+  var filteredAgByAg    = new Map();
+  var allFilteredAgRows = [];
+  var agNames           = Array.from(agRowsByAdGroup.keys());
 
   for (var i = 0; i < agNames.length; i++) {
-    var agName  = agNames[i];
-    var agRows  = agRowsByAdGroup.get(agName);
-    var agTok   = countTokens(agRows);
+    var agName   = agNames[i];
+    var agRows   = agRowsByAdGroup.get(agName);
+    var filtered = topNRowsByClicks(agRows, 4, AI_CONFIG.topN);
+    filteredAgByAg.set(agName, filtered);
+    for (var r = 0; r < filtered.length; r++) {
+      allFilteredAgRows.push(filtered[r]);
+    }
+  }
+
+  // Normal chunking: pack ad groups into chunks up to the token budget.
+  var chunks   = [];
+  var curChunk = [];
+  var curTok   = 0;
+
+  for (var i2 = 0; i2 < agNames.length; i2++) {
+    var agName2 = agNames[i2];
+    var agRows2 = filteredAgByAg.get(agName2);
+    var agTok   = countTokens(agRows2);
 
     if (agTok > agBudget) {
-      // This single ad group is too large for one chunk -- split at phrase level.
-      // Flush whatever is in the current chunk first.
+      // Ad group still too large after topN filtering -- split at phrase level.
       if (curChunk.length > 0) {
         chunks.push(curChunk);
         curChunk = [];
         curTok   = 0;
       }
-      // Now phrase-split this ad group.
       var phraseChunk = [];
       var phraseTok   = 0;
-      for (var r = 0; r < agRows.length; r++) {
-        var rowTok = countTokens([agRows[r]]);
+      for (var r2 = 0; r2 < agRows2.length; r2++) {
+        var rowTok = countTokens([agRows2[r2]]);
         if (phraseChunk.length > 0 && phraseTok + rowTok > agBudget) {
           chunks.push(phraseChunk);
           phraseChunk = [];
           phraseTok   = 0;
         }
-        phraseChunk.push(agRows[r]);
+        phraseChunk.push(agRows2[r2]);
         phraseTok += rowTok;
       }
       if (phraseChunk.length > 0) chunks.push(phraseChunk);
 
     } else if (curTok + agTok > agBudget) {
-      // Adding this ad group would exceed the budget -- flush current chunk.
       if (curChunk.length > 0) chunks.push(curChunk);
-      curChunk = agRows.slice();
+      curChunk = agRows2.slice();
       curTok   = agTok;
 
     } else {
-      // This ad group fits in the current chunk.
-      curChunk = curChunk.concat(agRows);
+      curChunk = curChunk.concat(agRows2);
       curTok  += agTok;
     }
   }
   if (curChunk.length > 0) chunks.push(curChunk);
 
-  // Annotate each chunk with its index and total so the prompt can tell the
-  // AI whether it is seeing the whole campaign or just a part of it.
+  // Enforce maxChunksPerCampaign: if still over the cap, re-partition evenly.
+  var cap = AI_CONFIG.maxChunksPerCampaign;
+  if (cap > 0 && chunks.length > cap) {
+    Logger.log('   ✂️  ' + campaignName + ': ' + chunks.length + ' chunks → capped at ' + cap + '.');
+    chunks = [];
+    var rowsPerChunk = Math.ceil(allFilteredAgRows.length / cap);
+    for (var c = 0; c < cap; c++) {
+      var slice = allFilteredAgRows.slice(c * rowsPerChunk, (c + 1) * rowsPerChunk);
+      if (slice.length > 0) chunks.push(slice);
+    }
+  }
+
   var result = [];
-  for (var c = 0; c < chunks.length; c++) {
-    result.push({ agRows: chunks[c], chunkIdx: c + 1, total: chunks.length });
+  for (var ci = 0; ci < chunks.length; ci++) {
+    result.push({ agRows: chunks[ci], campRows: filteredCampRows, chunkIdx: ci + 1, total: chunks.length });
   }
   return result;
 }
 
 
 // -----------------------------------------------------------------------------
-// buildAccountPromptText(ss)
+// buildAccountPromptText(ss, clientBrand)
 // Reads the four account-level sheets and builds the prompt for the account
-// summary call. In 'account' mode only the top AI_CONFIG.topN rows are used.
-// In 'full' mode all rows are sent (topN is ignored for this call).
+// summary call. Sends the top AI_CONFIG.topN rows by clicks from each sheet.
 // -----------------------------------------------------------------------------
-function buildAccountPromptText(ss) {
+function buildAccountPromptText(ss, clientBrand) {
   var sheetNames = [
     'Account Word Analysis',
     'Account 2-Gram Analysis',
@@ -1815,7 +1854,6 @@ function buildAccountPromptText(ss) {
     'Account 4-Gram Analysis',
   ];
 
-  var isFullMode   = (AI_CONFIG.mode === 'full');
   var dataSections = [];
 
   for (var i = 0; i < sheetNames.length; i++) {
@@ -1827,12 +1865,11 @@ function buildAccountPromptText(ss) {
     var numCols = sheet.getLastColumn();
     var data    = sheet.getRange(4, 1, lastRow - 3, numCols).getValues();
 
-    // Sort by clicks descending (column index 2 on account sheets).
     var sorted = data.slice().sort(function(a, b) {
       return (parseFloat(b[2]) || 0) - (parseFloat(a[2]) || 0);
     });
 
-    var limit = isFullMode ? sorted.length : Math.min(AI_CONFIG.topN, sorted.length);
+    var limit = Math.min(AI_CONFIG.topN, sorted.length);
     var lines = ['phrase,clicks,cost,conversions,conv_value,roas'];
 
     for (var r = 0; r < limit; r++) {
@@ -1846,43 +1883,38 @@ function buildAccountPromptText(ss) {
       lines.push(phrase + ',' + clicks + ',' + cost + ',' + convs + ',' + cv + ',' + roas);
     }
 
-    var label = isFullMode
-      ? '--- ' + sheetNames[i] + ' (all ' + limit + ' rows) ---'
-      : '--- ' + sheetNames[i] + ' (top ' + limit + ' by clicks) ---';
-    dataSections.push(label);
+    dataSections.push('--- ' + sheetNames[i] + ' (top ' + limit + ' by clicks) ---');
     dataSections.push(lines.join('\n'));
   }
 
-  return AI_CONFIG.accountPrompt + '\n\n' + dataSections.join('\n');
+  var prompt = AI_CONFIG.accountPrompt.replace(/\{CLIENT_BRAND\}/g, clientBrand);
+  return prompt + '\n\n' + dataSections.join('\n');
 }
 
 
 // -----------------------------------------------------------------------------
-// buildCampaignPromptText(campaignName, campRows, agChunkRows, chunkIdx, total, avgRoas)
-// Builds the prompt text for a single campaign API call.
-// campRows is the full set of campaign-level rows for this campaign (always
-// included for context). agChunkRows is the ad group rows for this specific
-// chunk. chunkIdx and total are used to tell the AI if it is seeing a partial
-// view of a large campaign.
+// buildCampaignPromptText(campaignName, campRows, agChunkRows, chunkIdx, total, avgRoas, clientBrand)
+// Builds the prompt for a single campaign API call.
+// campRows is the already-filtered campaign-level data (same for all chunks).
+// agChunkRows is the ad group data for this specific chunk.
 // -----------------------------------------------------------------------------
-function buildCampaignPromptText(campaignName, campRows, agChunkRows, chunkIdx, total, avgRoas) {
+function buildCampaignPromptText(campaignName, campRows, agChunkRows, chunkIdx, total, avgRoas, clientBrand) {
   var chunkNote = total > 1
     ? '(part ' + chunkIdx + ' of ' + total + ' -- this is a large campaign split across multiple analyses)'
     : '';
 
   var instruction = AI_CONFIG.campaignPrompt
-    .replace('{CAMPAIGN}',  campaignName)
-    .replace('{CHUNK_NOTE}', chunkNote)
-    .replace('{AVG_ROAS}',  avgRoas);
+    .replace(/\{CLIENT_BRAND\}/g, clientBrand)
+    .replace('{CAMPAIGN}',        campaignName)
+    .replace('{CHUNK_NOTE}',      chunkNote)
+    .replace(/\{AVG_ROAS\}/g,     avgRoas);
 
-  // Campaign-level section
   var campLines = ['--- Campaign-level phrase data ---',
                    'phrase,clicks,cost,conversions,conv_value,roas'];
   for (var i = 0; i < campRows.length; i++) {
     campLines.push(formatCampaignRow(campRows[i]));
   }
 
-  // Ad group section
   var agLines = ['--- Ad group phrase data ---',
                  'ad_group,phrase,clicks,cost,conversions,conv_value,roas'];
   for (var j = 0; j < agChunkRows.length; j++) {
@@ -1895,30 +1927,28 @@ function buildCampaignPromptText(campaignName, campRows, agChunkRows, chunkIdx, 
 
 // -----------------------------------------------------------------------------
 // callGemini(promptText)
-// Sends promptText to the Gemini Flash API and returns the response text.
+// Sends promptText to Gemini Flash and returns the response text.
 //
-// We use UrlFetchApp rather than any SDK because the Ads Scripts runtime does
-// not support npm packages. The Gemini generateContent endpoint accepts a plain
-// JSON body and returns a straightforward JSON response.
+// Uses UrlFetchApp (the standard Apps Script HTTP client) rather than any SDK,
+// since the Ads Scripts runtime does not support npm packages.
 //
-// Model: gemini-flash-latest -- the 'latest' alias always resolves to the
-// current production Flash model across generations. Google provides a
-// two-week email notice before any swap, so this string will not break
-// silently due to deprecation the way a version-pinned string can. It is
-// deliberately not pinned to a specific generation (1.5, 2.5, 3 etc.) so
-// the script keeps working as new Flash generations are released.
+// Model: controlled by AI_CONFIG.model. Defaults to gemini-2.5-flash-lite,
+// which offers the best free-tier RPM (30/min) of any stable Flash model.
+// To switch models, update AI_CONFIG.model -- nothing else needs to change.
 //
-// temperature is set to 0.3 (low) for consistent, factual output rather than
-// creative variation. maxOutputTokens is 8,192 -- generous enough for a
-// detailed campaign analysis and well within the output limits of current
-// Flash models.
+// temperature: 0.3 for consistent, factual output.
+// maxOutputTokens: 8,192 -- enough for a detailed per-campaign analysis.
+// muteHttpExceptions: true so 429 and other error responses can be handled
+// cleanly rather than throwing an unformatted HTTP error.
 //
-// muteHttpExceptions is true so we can handle error responses ourselves and
-// surface a useful message rather than a raw HTTP error.
+// Rate limit handling:
+// On a 429 (quota exceeded) the function waits 60 seconds and retries once.
+// The free tier limit resets on a per-minute window, so a 60-second pause is
+// always sufficient regardless of the retry delay Gemini suggests in the error
+// message. If the retry also returns 429, the error is thrown normally.
 // -----------------------------------------------------------------------------
 function callGemini(promptText) {
-  var url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=' + AI_CONFIG.apiKey;
-
+  var url = 'https://generativelanguage.googleapis.com/v1beta/models/' + AI_CONFIG.model + ':generateContent?key=' + AI_CONFIG.apiKey;
   var payload = JSON.stringify({
     contents: [{ parts: [{ text: promptText }] }],
     generationConfig: {
@@ -1938,6 +1968,15 @@ function callGemini(promptText) {
   var code     = response.getResponseCode();
   var body     = JSON.parse(response.getContentText());
 
+  // On 429 (rate limit), wait 60 seconds and try once more.
+  if (code === 429) {
+    Logger.log('⏳ Rate limit hit. Waiting 60 seconds before retrying...');
+    Utilities.sleep(60000);
+    response = UrlFetchApp.fetch(url, options);
+    code     = response.getResponseCode();
+    body     = JSON.parse(response.getContentText());
+  }
+
   if (code !== 200) {
     var errMsg = (body.error && body.error.message) ? body.error.message : 'HTTP ' + code;
     throw new Error('Gemini API error: ' + errMsg);
@@ -1949,16 +1988,17 @@ function callGemini(promptText) {
     throw new Error('Gemini API returned an unexpected response structure: ' + JSON.stringify(body));
   }
 
+  // Pace requests to stay within the free-tier rate limit window.
+  if (AI_CONFIG.callDelayMs > 0) Utilities.sleep(AI_CONFIG.callDelayMs);
+
   return body.candidates[0].content.parts[0].text;
 }
 
 
 // -----------------------------------------------------------------------------
 // initialiseSummarySheet(ss, filterText)
-// Creates (or clears) the AI Summary sheet, applies brand styling to the three
-// header rows, moves the sheet to the front of the workbook, and returns it.
-// The body content (account summary and campaign sections) is written
-// separately by the calling function as it arrives from the API.
+// Creates or clears the AI Summary sheet, applies brand styling, moves it to
+// the front of the workbook, and returns it.
 // -----------------------------------------------------------------------------
 function initialiseSummarySheet(ss, filterText) {
   var sheetName = AI_CONFIG.sheetName;
@@ -1969,13 +2009,9 @@ function initialiseSummarySheet(ss, filterText) {
     sheet.clear();
   }
 
-  // Move to position 0 (front of the workbook).
   ss.setActiveSheet(sheet);
   ss.moveActiveSheet(0);
 
-  // A single wide column is cleaner than the previous two-column approach.
-  // Column B served no purpose other than contributing to the merged cell
-  // width, which we achieve more simply by just widening column A.
   var numCols = 1;
   sheet.setFrozenRows(3);
 
@@ -1991,8 +2027,8 @@ function initialiseSummarySheet(ss, filterText) {
   sheet.setRowHeight(1, 40);
 
   var modeLabel = AI_CONFIG.mode === 'full'
-    ? 'Full mode -- all campaigns analysed at ad group level'
-    : 'Account mode -- top ' + AI_CONFIG.topN + ' phrases per account-level sheet';
+    ? 'Full mode  |  ' + AI_CONFIG.topN + ' phrases per campaign analysed  |  ' + AI_CONFIG.maxChunksPerCampaign + ' API calls per campaign max'
+    : 'Account mode  |  Top ' + AI_CONFIG.topN + ' phrases per account-level sheet';
 
   var r2 = sheet.getRange(2, 1, 1, numCols);
   r2.setValue(filterText + '  |  ' + modeLabel);
@@ -2003,7 +2039,8 @@ function initialiseSummarySheet(ss, filterText) {
   r2.setFontWeight('bold');
   r2.setVerticalAlignment('middle');
   r2.setHorizontalAlignment('left');
-  sheet.setRowHeight(2, 24);
+  r2.setWrap(true);
+  sheet.setRowHeight(2, 40);
 
   var r3 = sheet.getRange(3, 1, 1, numCols);
   r3.setValue('Generated by Gemini Flash. Always review AI recommendations before acting on them.');
@@ -2025,25 +2062,15 @@ function initialiseSummarySheet(ss, filterText) {
 
 // -----------------------------------------------------------------------------
 // normaliseAiResponse(text)
-// Post-processes the raw text returned by Gemini before writing to the sheet.
-//
-// Two normalisation rules:
-//   1. 'roas' and 'Roas' -> 'ROAS' everywhere. The model frequently ignores
-//      the capitalisation instruction so we enforce it programmatically.
-//   2. Bullet hyphens ('- ') at the start of lines are replaced with the
-//      Unicode bullet character (u2022) and a small indent, so bullets look
-//      clean in the cell rather than starting with a hyphen character.
+// Post-processes raw Gemini output before writing to the sheet.
+// 1. Forces ROAS to all-caps (the model frequently ignores this instruction).
+// 2. Replaces leading hyphen bullets with the Unicode bullet character.
 // -----------------------------------------------------------------------------
 function normaliseAiResponse(text) {
-  // Capitalise all case variants of roas that are not already fully uppercased.
-  // The regex matches 'roas' case-insensitively but excludes the all-caps form
-  // so we don't double-process.
   text = text.replace(/\broas\b/gi, function(match) {
     return match === 'ROAS' ? match : 'ROAS';
   });
 
-  // Replace leading '- ' bullet hyphens with a bullet character + indent.
-  // We normalise line endings first for safety.
   text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   text = text.replace(/^- /gm, '  \u2022 ');
 
@@ -2053,27 +2080,19 @@ function normaliseAiResponse(text) {
 
 // -----------------------------------------------------------------------------
 // appendSectionBlock(sheet, nextRow, headerText, bodyText)
-// Writes one section of the AI summary to the sheet:
-//   - A teal header row (campaign name, "ACCOUNT SUMMARY" etc.)
-//   - A single body cell containing the full section text with embedded
-//     line breaks, so it reads as a coherent block rather than fragments.
+// Writes one section of the AI summary: a teal header row followed by a single
+// body cell containing the full section text with embedded line breaks.
 //
-// Why a single cell rather than one row per line?
-// One row per line produces 100+ rows per run, makes the sheet hard to
-// navigate, and means the row height estimation logic has to fight Google
-// Sheets' tendency to clip wrapped text. A single wrapped cell with an
-// estimated height is simpler, more readable, and more reliable.
+// A single wrapped cell is used rather than one row per line because it is
+// simpler to navigate, avoids row height estimation fighting with Sheets'
+// text clipping, and scales cleanly to any response length.
 //
-// Row height is estimated from the total character count divided by an
-// assumed characters-per-line value. The estimate is intentionally generous
-// (we would rather have a slightly tall cell than a clipped one).
-//
-// Returns the new nextRow value after writing both rows.
+// Row height is estimated generously from character count to avoid clipping.
+// Returns the updated nextRow value.
 // -----------------------------------------------------------------------------
 function appendSectionBlock(sheet, nextRow, headerText, bodyText) {
   var numCols = 1;
 
-  // -- Teal section header row ------------------------------------------------
   var hRange = sheet.getRange(nextRow, 1, 1, numCols);
   hRange.setValue(headerText);
   hRange.setWrap(false);
@@ -2087,9 +2106,6 @@ function appendSectionBlock(sheet, nextRow, headerText, bodyText) {
   sheet.setRowHeight(nextRow, 28);
   nextRow++;
 
-  // -- Body cell with full section text ---------------------------------------
-  // Normalise line endings and trim trailing whitespace so the cell does not
-  // start with a blank line.
   var cleanBody = normaliseAiResponse(bodyText.replace(/\r\n/g, '\n').replace(/\r/g, '\n').trim());
 
   var bRange = sheet.getRange(nextRow, 1, 1, numCols);
@@ -2103,15 +2119,11 @@ function appendSectionBlock(sheet, nextRow, headerText, bodyText) {
   bRange.setFontSize(10);
   bRange.setFontWeight('normal');
 
-  // Estimate row height. At Arial 10pt in a 660px column, roughly 95
-  // characters fit on one line at 18px per line. We count non-empty lines
-  // (including wrapped ones) and add generous padding. The aim is never to
-  // clip -- a slightly tall cell is fine, a clipped one is not.
   var CHARS_PER_LINE = 95;
   var LINE_HEIGHT_PX = 18;
   var PADDING_PX     = 20;
 
-  var bodyLines = cleanBody.split('\n');
+  var bodyLines    = cleanBody.split('\n');
   var wrappedTotal = 0;
   for (var i = 0; i < bodyLines.length; i++) {
     wrappedTotal += Math.max(1, Math.ceil(bodyLines[i].length / CHARS_PER_LINE));
@@ -2126,8 +2138,8 @@ function appendSectionBlock(sheet, nextRow, headerText, bodyText) {
 
 // -----------------------------------------------------------------------------
 // finaliseSummarySheet(sheet, usedRows)
-// Trims unused rows and columns from the summary sheet after all content has
-// been written. Called once at the very end of generateAiSummary().
+// Trims unused rows and columns from the summary sheet after all content
+// has been written.
 // -----------------------------------------------------------------------------
 function finaliseSummarySheet(sheet, usedRows) {
   var numCols = 1;
@@ -2141,32 +2153,44 @@ function finaliseSummarySheet(sheet, usedRows) {
 
 // -----------------------------------------------------------------------------
 // generateAiSummary(ss, mode)
-// Orchestrates the full AI summary pipeline for both 'account' and 'full' modes.
+// Orchestrates the full AI summary pipeline.
+//
+// Time management:
+//   The AI section targets completion within 25 minutes total script runtime.
+//   maxAiMinutes = 25 - CONFIG.maxExecutionMinutes gives the budget remaining
+//   after mining. Before each campaign the elapsed AI time is checked; if
+//   less than 30 seconds remain the loop stops, skipped campaigns are listed
+//   in the sheet, and the script exits cleanly rather than being hard-killed.
 //
 // Account mode:
-//   1. Read account-level sheets and build a single prompt.
-//   2. Call Gemini once.
-//   3. Write the response to the summary sheet.
+//   One call with the top N phrases from each account-level sheet.
 //
 // Full mode:
-//   1. Write the account summary (same as account mode).
-//   2. For each campaign, load its campaign-level and ad group rows.
-//   3. Calculate token count. If the campaign fits in one call, send it.
-//      If not, split into chunks automatically (see buildCampaignChunks).
-//   4. For multi-chunk campaigns, collect all chunk responses and combine them
-//      under one campaign header in the sheet.
-//   5. Log progress after each campaign so you can see how far along it is.
+//   One call per campaign with campaign and ad group level data.
+//   Large campaigns are split into chunks automatically.
+//   All chunk responses are combined under one campaign header in the sheet.
 // -----------------------------------------------------------------------------
 function generateAiSummary(ss, mode) {
-  var filterText  = buildFilterText();
-  var sheet       = initialiseSummarySheet(ss, filterText);
-  var nextRow     = 4;
+  var filterText = buildFilterText();
+  var sheet      = initialiseSummarySheet(ss, filterText);
+  var nextRow    = 4;
 
-  // ---- Account-level summary (always written regardless of mode) -------------
-  Logger.log('[ AI ] Writing account summary...');
-  var accountPromptText = buildAccountPromptText(ss);
+  Logger.log('🧠 Model: ' + AI_CONFIG.model);
+
+  // Detect the client's brand from ad final URLs before making any AI calls.
+  var clientBrand = fetchClientBrand();
+
+  var AI_START_TS    = Date.now();
+  var AI_DEADLINE_MS = AI_CONFIG.maxAiMinutes * 60 * 1000;
+
+  // Minimum headroom per campaign before starting it. 30 seconds is
+  // conservative -- single-chunk campaigns typically take 5-15 seconds.
+  var MIN_MS_PER_CAMPAIGN = 30 * 1000;
+
+  // ---- Account-level summary -------------------------------------------------
+  Logger.log('📝 Writing account summary...');
+  var accountPromptText = buildAccountPromptText(ss, clientBrand);
   var accountSummary    = callGemini(accountPromptText);
-
   nextRow = appendSectionBlock(sheet, nextRow, 'ACCOUNT SUMMARY', accountSummary);
 
   if (mode !== 'full') {
@@ -2188,46 +2212,70 @@ function generateAiSummary(ss, mode) {
     'Ad Group 4-Gram Analysis',
   ];
 
-  // Read all campaign and ad group data grouped by campaign name.
-  // readSheetRowsByCampaign returns Map: campaignName -> [rows]
-  // readSheetRowsByCampaignAndAdGroup returns Map: campaignName -> Map: adGroupName -> [rows]
   var campRowsByCamp = readSheetRowsByCampaign(ss, campSheetNames, 0);
   var agRowsByCampAg = readSheetRowsByCampaignAndAdGroup(ss, agSheetNames);
 
-  var campNames  = Array.from(campRowsByCamp.keys()).sort();
-  var totalCamps = campNames.length;
+  var campNames    = Array.from(campRowsByCamp.keys()).sort();
+  var totalCamps   = campNames.length;
+  var skippedCamps = [];
 
-  Logger.log('[ AI ] ' + totalCamps + ' campaigns to analyse in full mode...');
+  Logger.log('📋 ' + totalCamps + ' campaigns to analyse...');
 
   for (var ci = 0; ci < campNames.length; ci++) {
-    var campName    = campNames[ci];
-    var campRows    = campRowsByCamp.get(campName);
-    var agByAg      = agRowsByCampAg.get(campName) || new Map();
-    var avgRoas     = calcCampaignAvgRoas(campRows);
+    var campName = campNames[ci];
 
-    Logger.log('[ AI ] Campaign ' + (ci + 1) + '/' + totalCamps + ': ' + campName);
+    // Time check: stop before starting a campaign we cannot finish.
+    var aiElapsed = Date.now() - AI_START_TS;
+    if (aiElapsed + MIN_MS_PER_CAMPAIGN > AI_DEADLINE_MS) {
+      Logger.log('⏱️  Time limit reached after ' + (aiElapsed / 60000).toFixed(1) + ' min. Stopping before: ' + campName);
+      for (var sk = ci; sk < campNames.length; sk++) {
+        skippedCamps.push(campNames[sk]);
+      }
+      break;
+    }
 
-    var chunks     = buildCampaignChunks(campName, campRows, agByAg);
-    var campParts  = [];
+    var campRows = campRowsByCamp.get(campName);
+    var agByAg   = agRowsByCampAg.get(campName) || new Map();
+    var avgRoas  = calcCampaignAvgRoas(campRows);
+
+    Logger.log('   📊 Campaign ' + (ci + 1) + '/' + totalCamps + ': ' + campName);
+
+    var chunks    = buildCampaignChunks(campName, campRows, agByAg);
+    var campParts = [];
 
     for (var ki = 0; ki < chunks.length; ki++) {
-      var chunk       = chunks[ki];
-      var promptText  = buildCampaignPromptText(
-        campName, campRows, chunk.agRows, chunk.chunkIdx, chunk.total, avgRoas
+      var chunk      = chunks[ki];
+      var promptText = buildCampaignPromptText(
+        campName, chunk.campRows, chunk.agRows, chunk.chunkIdx, chunk.total, avgRoas, clientBrand
       );
       var chunkResult = callGemini(promptText);
       campParts.push(chunkResult);
 
       if (chunks.length > 1) {
-        Logger.log('[ AI ]   Chunk ' + chunk.chunkIdx + '/' + chunk.total + ' done.');
+        Logger.log('      ✓ Chunk ' + chunk.chunkIdx + '/' + chunk.total);
       }
     }
 
-    // Write a teal campaign header row then the combined response.
     var headerText   = campName + '  |  Avg ROAS: ' + avgRoas;
     var responseText = campParts.join('\n\n--- (continued) ---\n\n');
-
     nextRow = appendSectionBlock(sheet, nextRow, headerText, responseText);
+  }
+
+  // If any campaigns were skipped, append a notice so the output is
+  // self-documenting and the user knows exactly what is missing and why.
+  if (skippedCamps.length > 0) {
+    var skipNote = [
+      'The following ' + skippedCamps.length + ' campaign(s) were not analysed because the AI time limit (' + AI_CONFIG.maxAiMinutes + ' min) was reached.',
+      '',
+      'To include them, either:',
+      '  1. Reduce CONFIG.maxExecutionMinutes to give the AI more time (e.g. 12 instead of 15).',
+      '  2. Use campaignNameContains in CONFIG to run the script for a subset of campaigns.',
+      '',
+      'Skipped campaigns:',
+    ].concat(skippedCamps.map(function(n) { return '  \u2022 ' + n; })).join('\n');
+
+    nextRow = appendSectionBlock(sheet, nextRow, 'NOTICE: CAMPAIGNS NOT ANALYSED (time limit reached)', skipNote);
+    Logger.log('⚠️  ' + skippedCamps.length + ' campaign(s) skipped. See NOTICE in the AI Summary sheet.');
   }
 
   finaliseSummarySheet(sheet, nextRow - 1);
