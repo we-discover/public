@@ -173,7 +173,7 @@ const AI_CONFIG = {
   // a total runtime of 25 minutes; the AI section gets whatever is left after
   // mining and sheet finalisation (typically 5-10 minutes on a 15-minute mine).
   // You do not need to change this.
-  maxAiMinutes: (25 - CONFIG.maxExecutionMinutes),
+  maxAiMinutes: (30 - CONFIG.maxExecutionMinutes),
 
   // -- Model ------------------------------------------------------------------
   // The Gemini model used for all AI calls.
