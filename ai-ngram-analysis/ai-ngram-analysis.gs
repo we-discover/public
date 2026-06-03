@@ -31,8 +31,8 @@ const CONFIG = {
   // Dates go in as DD/MM/YYYY because that is the correct way to write
   // a date and we will not be taking questions. Yes, Americans put the
   // month first (June 23rd becomes 06/23). Nobody knows why. We've asked.
-  startDate: '01/01/2026',   // dd/mm/yyyy -- change this to your start date
-  endDate:   '01/02/2026',   // dd/mm/yyyy -- change this to your end date
+  startDate: '01/05/2026',   // dd/mm/yyyy -- change this to your start date
+  endDate:   '31/05/2026',   // dd/mm/yyyy -- change this to your end date
 
   // -- Currency ----------------------------------------------------------------
   // Type your currency symbol directly. £ for GBP, $ for USD, € for EUR.
@@ -57,7 +57,7 @@ const CONFIG = {
   // -- Spreadsheet -------------------------------------------------------------
   // Paste the full URL of the Google Sheet you want results written to.
   // The sheet must already exist and this script must have edit access.
-  spreadsheetUrl: 'INSERT-SPREADSHEET-URL',
+  spreadsheetUrl: 'INSERT-SPREADSHEET-URL-HERE',
 
   // -- N-gram length -----------------------------------------------------------
   // An n-gram is a sequence of words. 1 = single words, 2 = two-word phrases, etc.
@@ -124,7 +124,7 @@ const CONFIG = {
 //     One API call. Sends the top N phrases by clicks from each of the four
 //     account-level sheets. Fast, good for a quick read of the whole account.
 //
-//   mode: 'account'
+//   mode: 'full'
 //     One API call per campaign using all phrase data at campaign and ad group
 //     level. Produces specific, actionable recommendations per campaign.
 //     For large campaigns the script splits data into chunks automatically and
@@ -173,7 +173,7 @@ const AI_CONFIG = {
   // a total runtime of 25 minutes; the AI section gets whatever is left after
   // mining and sheet finalisation (typically 5-10 minutes on a 15-minute mine).
   // You do not need to change this.
-  maxAiMinutes: (25 - CONFIG.maxExecutionMinutes),
+  maxAiMinutes: (30 - CONFIG.maxExecutionMinutes),
 
   // -- Model ------------------------------------------------------------------
   // The Gemini model used for all AI calls.
@@ -897,16 +897,39 @@ function addStats(map, key, stats) {
 
 
 // -----------------------------------------------------------------------------
+// buildDateRangeText()
+// Returns the analysis date range in British (DD/MM/YYYY) format for display
+// in the teal status bar (row 2) of every output sheet. Dates are normalised
+// to zero-padded DD/MM/YYYY so the range reads consistently regardless of how
+// they were entered in CONFIG.
+// -----------------------------------------------------------------------------
+function buildDateRangeText() {
+  function fmt(ddmmyyyy) {
+    var parts = String(ddmmyyyy).split('/');
+    if (parts.length !== 3) return ddmmyyyy;
+    var dd = parts[0].length === 1 ? '0' + parts[0] : parts[0];
+    var mm = parts[1].length === 1 ? '0' + parts[1] : parts[1];
+    return dd + '/' + mm + '/' + parts[2];
+  }
+  return 'Date range: ' + fmt(CONFIG.startDate) + ' to ' + fmt(CONFIG.endDate);
+}
+
+
+// -----------------------------------------------------------------------------
 // buildFilterText()
-// Human-readable summary of which campaigns and ad groups are included.
-// Appears in the teal status bar at the top of each sheet.
+// Human-readable summary of the analysis date range plus which campaigns and
+// ad groups are included. Appears in the teal status bar (row 2) at the top of
+// each sheet. Every row-2 status string flows through this function -- the data
+// sheets via initialiseSheets() and finaliseSheets(), and the AI Summary sheet
+// via initialiseSummarySheet() -- so adding the date range here puts it on
+// every output sheet.
 // -----------------------------------------------------------------------------
 function buildFilterText() {
   let text = CONFIG.ignorePausedAdGroups ? 'Active ad groups' : 'All ad groups';
   text += CONFIG.ignorePausedCampaigns ? ' in active campaigns' : ' in all campaigns';
   if (CONFIG.campaignNameContains)       text += " containing '" + CONFIG.campaignNameContains + "'";
   if (CONFIG.campaignNameDoesNotContain) text += " not containing '" + CONFIG.campaignNameDoesNotContain + "'";
-  return text;
+  return buildDateRangeText() + '  |  ' + text;
 }
 
 
