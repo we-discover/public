@@ -8,7 +8,7 @@
  *               accounts (1M+ clicks/month, 50M+ impressions/month).
  *
  *  License:     https://github.com/we-discover/public/blob/master/LICENSE
- *  Version:     3.12.0
+ *  Version:     3.13.0
  *  Released:    2026-05-11
  *  Contact:     scripts@we-discover.com
  *
@@ -99,7 +99,7 @@ const CONFIG = {
   //
   // If mining hits this limit before finishing, the sheet will be marked
   // PARTIAL but all data processed up to that point is written correctly.
-  maxExecutionMinutes: 25,
+  maxExecutionMinutes: 15,
 };
 // =============================================================================
 // END OF CONFIGURATION -- do not edit anything below this line
@@ -139,7 +139,7 @@ const AI_CONFIG = {
   // -- Mode --------------------------------------------------------------------
   // 'account' -- one call, top N phrases per account-level sheet. Fast.
   // 'full'    -- one call per campaign, all data at campaign and ad group level.
-  mode: 'full',
+  mode: 'account',
 
   // -- Token budget (full mode only) -------------------------------------------
   // Maximum tokens of input data per API call. 60,000 is a good balance between
@@ -213,7 +213,7 @@ const AI_CONFIG = {
   // -- Account summary prompt --------------------------------------------------
   // The instruction sent to the AI for the account-level summary. The phrase
   // data is appended automatically. Keep this under a few hundred words.
-  accountPrompt: [
+accountPrompt: [
     'You are a Lead Performance Consultant at WeDiscover, a London-based performance marketing agency. You are auditing paid search n-gram data on behalf of a client. The client\'s brand name is: {CLIENT_BRAND}.',
     '',
     'WeDiscover manages the account -- WeDiscover is NOT the brand being advertised. Always refer to the client\'s customers as "{CLIENT_BRAND}\'s customers", never as "WeDiscover\'s customers".',
@@ -230,6 +230,7 @@ const AI_CONFIG = {
     '- NEVER recommend match types for n-grams. Match types apply to keywords, not to search query fragments.',
     '- When identifying keyword opportunities, describe the intent or theme the n-gram reveals, and suggest what TYPE of keyword could be built to capture or exclude that intent.',
     '- When suggesting negatives, recommend the concept or theme, not the exact n-gram string.',
+    '- EXCEPTION: Section 5 is a factual spend callout and DOES name exact terms verbatim. This is an observation, not a keyword recommendation, so the "describe the theme not the string" rule does not apply there.',
     '',
     '2. TONE & STYLE:',
     '- Be professional, insightful, and collaborative. Use \'We suggest\' or \'Consider\' rather than \'Do this\'.',
@@ -270,7 +271,16 @@ const AI_CONFIG = {
     '4. SUMMARY',
     'One senior strategic observation that ties the above together. Be direct. If the account has a clear structural problem, name it.',
     '',
-    'Keep the response under 450 words. Do not use markdown, asterisks, or hash symbols.',
+    '5. HIGHEST-SPEND ZERO-CONVERTING TERMS',
+    'A short, factual callout of where spend is going nowhere. Identify the single highest-spending term with ZERO conversions at two lengths: the top one-word (unigram) term and the top two-word (bigram) term. Rules:',
+    '- Name the exact term verbatim in \'single quotes\' and state its actual ${} spend for each length.',
+    '- These have a ROAS of 0.00 by definition -- state plainly that the spend returned nothing. Do not dress it up.',
+    '- This is an OBSERVATION, not a recommendation. Do not tell the reader what to do about it.',
+    '- When identifying the top unigram, IGNORE single-word stop words (\'for\', \'and\', \'the\', \'of\', \'in\', \'a\', \'to\', \'with\', \'uk\') -- they carry no intent and are extraction artefacts.',
+    '- Do not flag terms spending under £20. If no zero-converting term clears £20 at a given length, say so plainly for that length.',
+    '- Keep this to one or two sentences. Example shape: \'The highest-spending non-converting terms are \'recycling\' (one-word, £X) and \'recycling bin\' (two-word, £Y) -- neither has driven a single conversion.\'',
+    '',
+    'Keep the response under 500 words. Do not use markdown, asterisks, or hash symbols.',
   ].join('\n'),
 
   // -- Campaign prompt (full mode only) ----------------------------------------
