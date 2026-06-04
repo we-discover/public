@@ -99,7 +99,7 @@ const CONFIG = {
   //
   // If mining hits this limit before finishing, the sheet will be marked
   // PARTIAL but all data processed up to that point is written correctly.
-  maxExecutionMinutes: 15,
+  maxExecutionMinutes: 25,
 };
 // =============================================================================
 // END OF CONFIGURATION -- do not edit anything below this line
@@ -139,7 +139,7 @@ const AI_CONFIG = {
   // -- Mode --------------------------------------------------------------------
   // 'account' -- one call, top N phrases per account-level sheet. Fast.
   // 'full'    -- one call per campaign, all data at campaign and ad group level.
-  mode: 'account',
+  mode: 'full',
 
   // -- Token budget (full mode only) -------------------------------------------
   // Maximum tokens of input data per API call. 60,000 is a good balance between
